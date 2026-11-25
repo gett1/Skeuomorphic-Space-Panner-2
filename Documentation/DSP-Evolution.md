@@ -82,3 +82,11 @@ I risultati riguardano il processore DSP in sequenza. Restano da misurare il cos
 Il [run nativo](https://github.com/gett1/Skeuomorphic-Space-Panner-2/actions/runs/45582023071) contiene log e bundle di test, senza installer. I bundle macOS hanno firma ad hoc e non sono notarizzati. Il controllo AU copia il bundle nella directory di sistema del runner, riavvia la registrazione dei componenti e invoca auval. La prima esecuzione aveva compilato entrambi i target Mac e superato pluginval, ma l'AU appena copiato non era stato registrato.
 
 Su Linux, Valgrind Memcheck 3.24 ha riportato **0 errori e 0 byte ancora allocati** dopo l'intera suite DSP. I controlli in Ableton Live e GarageBand, in particolare automazione registrata, freeze e riproduzione della coda dopo lo stop, restano da eseguire nelle DAW.
+
+## Revisione Alpha 2.0.1
+
+Il parametro automatizzabile **MIX** controlla la miscela lineare dal segnale stereo originale, prima del gain e del limiter, al risultato completo del processore. A 100% il renderer Legacy resta quello della 1.1.0. A 0% l'uscita in modalità insert è il segnale originale. In modalità SEND il MIX scala il ritorno wet senza aggiungere il dry. Le variazioni di MIX hanno 20 ms di smoothing. Sessioni e preset XML senza MIX ricevono il default 100%.
+
+La build di prova si chiama **Skeuomorphic Space Panner Alpha**. Il codice plug-in Alpha è `SpAw` su Windows e `SpAm` su macOS, con bundle ID `com.gett1.skeuomorphicspacepanner.alpha`. I due VST3 e l'AU risultano separati dalla 1.1.0. La DAW continuerà a richiamare le istanze precedenti con l'identificativo della 1.1.0. Il menu Alpha può leggere i preset XML precedenti e salva i nuovi in una cartella separata.
+
+L'editor può caricare le grafiche del proprietario dalla cartella `Skeuomorphic Space Panner Alpha Artwork` accanto al bundle, dentro `Contents/Resources`, oppure da Documenti. I pacchetti di prova personalizzati includono le cinque grafiche centrali e gli sfondi recuperati dalla build 1.1.0. I sorgenti pubblici incorporano risorse neutre di fallback.

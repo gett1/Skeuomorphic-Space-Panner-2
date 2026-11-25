@@ -16,7 +16,7 @@ GettoneSpacePannerProcessor::GettoneSpacePannerProcessor()
 
 GettoneSpacePannerProcessor::~GettoneSpacePannerProcessor() {}
 
-const juce::String GettoneSpacePannerProcessor::getName() const { return "Gettone Space Panner"; }
+const juce::String GettoneSpacePannerProcessor::getName() const { return "Skeuomorphic Space Panner Alpha"; }
 bool GettoneSpacePannerProcessor::acceptsMidi() const { return false; }
 bool GettoneSpacePannerProcessor::producesMidi() const { return false; }
 bool GettoneSpacePannerProcessor::isMidiEffect() const { return false; }
@@ -51,7 +51,7 @@ juce::AudioProcessorEditor* GettoneSpacePannerProcessor::createEditor() { return
 juce::ValueTree GettoneSpacePannerProcessor::copyVersionedState()
 {
     auto state = treeState.copyState();
-    state.setProperty("stateVersion", 2, nullptr);
+    state.setProperty("stateVersion", 3, nullptr);
     return state;
 }
 
@@ -60,13 +60,18 @@ void GettoneSpacePannerProcessor::restoreVersionedState(juce::ValueTree state)
     if (!state.hasType("PARAMETERS"))
         return;
 
-    if (!state.getChildWithProperty("id", "roomMode").isValid())
+    const auto addIfMissing = [&state](const char* id, float value)
     {
-        juce::ValueTree legacyMode { "PARAM" };
-        legacyMode.setProperty("id", "roomMode", nullptr);
-        legacyMode.setProperty("value", 0.0f, nullptr);
-        state.appendChild(legacyMode, nullptr);
-    }
+        if (!state.getChildWithProperty("id", id).isValid())
+        {
+            juce::ValueTree parameter { "PARAM" };
+            parameter.setProperty("id", id, nullptr);
+            parameter.setProperty("value", value, nullptr);
+            state.appendChild(parameter, nullptr);
+        }
+    };
+    addIfMissing("roomMode", 0.0f);
+    addIfMissing("mix", 1.0f);
 
     const juce::ScopedLock lock(stateRestoreLock);
     stateRestoreSequence.fetch_add(1);
@@ -116,6 +121,12 @@ juce::AudioProcessorValueTreeState::ParameterLayout GettoneSpacePannerProcessor:
     params.push_back(std::make_unique<juce::AudioParameterChoice>(
         juce::ParameterID{ "roomMode", 2 }, "Room Mode", juce::StringArray{ "Legacy", "Neutral" }, 1));
 
+    params.push_back(std::make_unique<juce::AudioParameterFloat>(
+        juce::ParameterID{ "mix", 3 }, "Mix", juce::NormalisableRange<float>{ 0.0f, 1.0f }, 1.0f,
+        juce::AudioParameterFloatAttributes().withLabel("%")
+            .withStringFromValueFunction([](float value, int) { return juce::String(juce::roundToInt(value * 100.0f)); })
+            .withValueFromStringFunction([](const juce::String& text) { return text.getFloatValue() / 100.0f; })));
+
     return { params.begin(), params.end() };
 }
 
@@ -124,6 +135,8 @@ void GettoneSpacePannerProcessor::prepareToPlay(double sampleRate, int samplesPe
     currentSampleRate = (float)sampleRate;
     transitionLength = juce::jmax(1, juce::roundToInt(0.010 * sampleRate));
     transitionDry.setSize(2, transitionLength);
+    mixDry.setSize(2, juce::jmax(1, samplesPerBlock));
+    smoothedMix.reset(sampleRate, 0.020);
     hasRendered = false;
     scopeStride = juce::jmax(1, juce::roundToInt(sampleRate / 24000.0));
     lastCutoff = -1.0f;
@@ -224,13 +237,14 @@ void GettoneSpacePannerProcessor::render(juce::AudioBuffer<float>& buffer, bool 
     if (!hasRendered)
     {
         transitionPosition = processing ? transitionLength : 0;
+        smoothedMix.setCurrentAndTargetValue(values[mix]);
         hasRendered = true;
     }
     const int remaining = processing ? transitionLength - transitionPosition : transitionPosition;
 
     if (processing && remaining == 0)
     {
-        processEffect(buffer, values);
+        processWithMix(buffer, values);
     }
     else if (remaining > 0)
     {
@@ -242,7 +256,7 @@ void GettoneSpacePannerProcessor::render(juce::AudioBuffer<float>& buffer, bool 
         // stereo view uses AudioBuffer's inline channel-pointer storage.
         juce::AudioBuffer<float> effectBuffer(buffer.getArrayOfWritePointers(), 2,
                                               processing ? samples : fadeSamples);
-        processEffect(effectBuffer, values);
+        processWithMix(effectBuffer, values);
 
         for (int i = 0; i < fadeSamples; ++i)
         {
@@ -260,6 +274,9 @@ void GettoneSpacePannerProcessor::render(juce::AudioBuffer<float>& buffer, bool 
             reset();
     }
 
+    if (!processing && transitionPosition == 0)
+        smoothedMix.setCurrentAndTargetValue(values[mix]);
+
     publishOutput(buffer);
 }
 
@@ -268,6 +285,54 @@ void GettoneSpacePannerProcessor::publishOutput(const juce::AudioBuffer<float>& 
     peakL.store(buffer.getMagnitude(0, 0, buffer.getNumSamples()), std::memory_order_relaxed);
     peakR.store(buffer.getMagnitude(1, 0, buffer.getNumSamples()), std::memory_order_relaxed);
     scope.push(buffer, scopeStride);
+}
+
+void GettoneSpacePannerProcessor::processWithMix(juce::AudioBuffer<float>& buffer, const ParameterValues& values)
+{
+    smoothedMix.setTargetValue(values[mix]);
+    if (!smoothedMix.isSmoothing() && smoothedMix.getCurrentValue() == 1.0f)
+    {
+        processEffect(buffer, values);
+        return;
+    }
+
+    // SEND restricts the output to the processed return. MIX then controls the
+    // return level, without summing a duplicate dry signal on the host's aux.
+    const bool sendOnly = values[send] > 0.5f;
+    const auto samples = buffer.getNumSamples();
+    for (int start = 0; start < samples;)
+    {
+        const auto count = juce::jmin(samples - start, mixDry.getNumSamples());
+        if (!sendOnly)
+            for (int channel = 0; channel < 2; ++channel)
+                mixDry.copyFrom(channel, 0, buffer, channel, start, count);
+
+        juce::AudioBuffer<float> effect(buffer.getArrayOfWritePointers(), 2, start, count);
+        processEffect(effect, values);
+
+        auto* left = effect.getWritePointer(0);
+        auto* right = effect.getWritePointer(1);
+        const auto* dryLeft = mixDry.getReadPointer(0);
+        const auto* dryRight = mixDry.getReadPointer(1);
+        for (int i = 0; i < count; ++i)
+        {
+            const auto amount = smoothedMix.getNextValue();
+            if (amount == 1.0f)
+                continue;
+
+            if (sendOnly)
+            {
+                left[i] *= amount;
+                right[i] *= amount;
+            }
+            else
+            {
+                left[i] = std::lerp(dryLeft[i], left[i], amount);
+                right[i] = std::lerp(dryRight[i], right[i], amount);
+            }
+        }
+        start += count;
+    }
 }
 
 void GettoneSpacePannerProcessor::processEffect(juce::AudioBuffer<float>& buffer, const ParameterValues& values)

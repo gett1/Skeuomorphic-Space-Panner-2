@@ -119,6 +119,7 @@ void testState()
     GettoneSpacePannerProcessor restored;
     set(source, "posX", -0.4f);
     set(source, "theme", 3.0f);
+    set(source, "mix", 0.27f);
     juce::MemoryBlock binary;
     source.getStateInformation(binary);
     restored.setStateInformation(binary.getData(), static_cast<int>(binary.getSize()));
@@ -127,7 +128,12 @@ void testState()
             "Position lost on restore");
     require(restored.treeState.getRawParameterValue("theme")->load() == 3.0f, "Theme lost on restore");
 
+    require(restored.treeState.getRawParameterValue("mix")->load() == 0.27f, "Mix lost on restore");
+
     auto old = source.copyVersionedState();
+    old.removeChild(old.getChildWithProperty("id", "mix"), nullptr);
+    restored.restoreVersionedState(old.createCopy());
+    require(restored.treeState.getRawParameterValue("mix")->load() == 1.0f, "Previous Alpha mix default lost");
     old.removeProperty("stateVersion", nullptr);
     old.removeChild(old.getChildWithProperty("id", "roomMode"), nullptr);
     juce::AudioProcessor::copyXmlToBinary(*old.createXml(), binary);
@@ -138,7 +144,62 @@ void testState()
     set(restored, "roomMode", 1.0f);
     restored.restoreVersionedState(old.createCopy());
     require(restored.treeState.getRawParameterValue("roomMode")->load() == 0.0f, "V1 XML preset did not migrate to Legacy");
-    require(static_cast<int>(restored.copyVersionedState()["stateVersion"]) == 2, "Saved version is incorrect");
+    require(static_cast<int>(restored.copyVersionedState()["stateVersion"]) == 3, "Saved version is incorrect");
+}
+
+void testMix(double rate, int block)
+{
+    juce::MidiBuffer midi;
+    juce::AudioBuffer<float> input(2, block), dry(2, block), wet(2, block), middle(2, block);
+
+    for (bool send : { false, true })
+    {
+        GettoneSpacePannerProcessor zero, full, half;
+        for (auto* processor : { &zero, &full, &half })
+        {
+            set(*processor, "roomMode", 0.0f);
+            set(*processor, "posZ", 0.8f);
+            set(*processor, "posX", -0.6f);
+            set(*processor, "inGain", 10.0f);
+            set(*processor, "sendMode", send ? 1.0f : 0.0f);
+            processor->prepareToPlay(rate, block);
+        }
+        set(zero, "mix", 0.0f);
+        set(half, "mix", 0.5f);
+
+        const int transition = juce::roundToInt(rate * 0.02);
+        for (int offset = 0; offset < rate * 0.35; offset += block)
+        {
+            fillSignal(input, offset);
+            dry.makeCopyOf(input);
+            wet.makeCopyOf(input);
+            middle.makeCopyOf(input);
+            zero.processBlock(dry, midi);
+            full.processBlock(wet, midi);
+            half.processBlock(middle, midi);
+            require(send ? magnitude(dry) == 0.0f : same(input, dry),
+                    "Mix 0 did not return exact dry audio or a silent send as appropriate");
+            for (int channel = 0; channel < 2; ++channel)
+                for (int sample = 0; sample < block; ++sample)
+                {
+                    const auto expected = std::lerp(dry.getSample(channel, sample), wet.getSample(channel, sample), 0.5f);
+                    require(std::abs(middle.getSample(channel, sample) - expected) < 1.0e-6f,
+                            "Mix 50 does not blend the complete output in the proper proportion");
+                }
+        }
+
+        set(zero, "mix", 1.0f);
+        for (int offset = 0; offset < transition + block; offset += block)
+        {
+            fillSignal(input, offset);
+            dry.makeCopyOf(input);
+            wet.makeCopyOf(input);
+            full.processBlock(wet, midi);
+            zero.processBlock(dry, midi);
+            if (offset >= transition && !send)
+                require(same(wet, dry), "Automation did not converge to the original full wet output");
+        }
+    }
 }
 
 void testVariableBlocks()
@@ -330,6 +391,7 @@ int main(int argc, char** argv)
             for (const auto block : blocks)
             {
                 testPassThrough(rate, block);
+                testMix(rate, block);
 #if GETT1_TEST_LEGACY_REFERENCE
                 testLegacy(rate, block);
 #endif

@@ -2,7 +2,7 @@ cmake_minimum_required(VERSION 3.22)
 
 # Porting macOS per Skeuomorphic Space Panner / gett1.
 # Il progetto precedente era JUCE/Projucer; questa e' una build CMake indipendente.
-project(SkeuomorphicSpacePanner VERSION 2.0.0 LANGUAGES C CXX)
+project(SkeuomorphicSpacePanner VERSION 2.0.1 LANGUAGES C CXX)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -23,14 +23,14 @@ else()
     set(PANNER_FORMATS VST3 Standalone)
 endif()
 
-# Conserva l’identità VST3 e AU della versione macOS 1.0.0.
+# Identità separata per installare Alpha accanto alla 1.1.0.
 juce_add_plugin(SpacePanner
     COMPANY_NAME "gett1"
-    BUNDLE_ID "com.gett1.skeuomorphicspacepanner"
+    BUNDLE_ID "com.gett1.skeuomorphicspacepanner.alpha"
     PLUGIN_MANUFACTURER_CODE Gett
-    PLUGIN_CODE Spnr
-    PLUGIN_NAME "Skeuomorphic Space Panner"
-    PRODUCT_NAME "Skeuomorphic Space Panner"
+    PLUGIN_CODE SpAm
+    PLUGIN_NAME "Skeuomorphic Space Panner Alpha"
+    PRODUCT_NAME "Skeuomorphic Space Panner Alpha"
     DESCRIPTION "Creative stereo spatial panner with interactive early reflections"
     IS_SYNTH FALSE
     NEEDS_MIDI_INPUT FALSE

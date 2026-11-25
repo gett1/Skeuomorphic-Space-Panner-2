@@ -44,12 +44,12 @@ private:
     {
         x, y, z, roomSize, width, inputGain, outputGain, bypass, send,
         node1X, node1Y, node2X, node2Y, node3X, node3Y, node4X, node4Y,
-        reflections, theme, roomMode, parameterCount
+        reflections, theme, roomMode, mix, parameterCount
     };
     static constexpr std::array<const char*, parameterCount> parameterIds{
         "posX", "posY", "posZ", "revSize", "width", "inGain", "outGain", "bypass", "sendMode",
         "node1X", "node1Y", "node2X", "node2Y", "node3X", "node3Y", "node4X", "node4Y",
-        "erLevel", "theme", "roomMode"
+        "erLevel", "theme", "roomMode", "mix"
     };
     using ParameterValues = std::array<float, parameterCount>;
 
@@ -57,6 +57,7 @@ private:
     ParameterValues readParameters() noexcept;
     bool shouldProcess(const ParameterValues&, bool hostBypass) const noexcept;
     void render(juce::AudioBuffer<float>&, bool hostBypass);
+    void processWithMix(juce::AudioBuffer<float>&, const ParameterValues&);
     void processEffect(juce::AudioBuffer<float>&, const ParameterValues&);
     void publishOutput(const juce::AudioBuffer<float>&);
 
@@ -66,6 +67,8 @@ private:
     juce::CriticalSection stateRestoreLock;
     std::atomic<unsigned> stateRestoreSequence{ 0 };
     juce::AudioBuffer<float> transitionDry;
+    juce::AudioBuffer<float> mixDry;
+    juce::SmoothedValue<float, juce::ValueSmoothingTypes::Linear> smoothedMix { 1.0f };
     int transitionLength = 1;
     int transitionPosition = 0;
     int scopeStride = 2;

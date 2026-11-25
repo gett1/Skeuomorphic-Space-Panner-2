@@ -9,7 +9,7 @@ Skeuomorphic Space Panner è un plug-in audio di Giuseppe “Gettone” Ambrosin
 
 ## 2.0 Alpha — DSP Evolution
 
-Questa build di sviluppo aggiunge il bypass trasparente, la modalità Neutral, un visualizzatore stereo rivisto e il richiamo dei preset 1.1.0 in Legacy. La [documentazione DSP](Documentation/DSP-Evolution.md) descrive implementazione, verifiche e limiti. Le build di test conservano gli identificativi della 1.1.0 per verificare le sessioni esistenti. Provale in un host isolato o in un percorso plugin di test.
+Questa build di sviluppo aggiunge il bypass trasparente, la modalità Neutral, un visualizzatore stereo rivisto e il richiamo dei preset 1.1.0 in Legacy. La [documentazione DSP](Documentation/DSP-Evolution.md) descrive implementazione, verifiche e limiti. La 2.0.1 aggiunge il MIX generale. Nome, bundle e identificativi Alpha sono distinti, così la DAW può caricare anche la 1.1.0 nella stessa sessione.
 
 ## Risorse per compilare
 

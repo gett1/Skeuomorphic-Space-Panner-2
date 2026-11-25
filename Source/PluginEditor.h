@@ -33,6 +33,7 @@ private:
     juce::Slider outGainSlider;
     juce::Slider revSizeSlider;
     juce::Slider widthSlider;
+    juce::Slider mixSlider;
     juce::ToggleButton sendModeButton{ "SEND MODE" };
 
     std::unique_ptr<juce::AudioProcessorValueTreeState::ComboBoxAttachment> themeAttachment, roomModeAttachment;
@@ -43,7 +44,11 @@ private:
     std::unique_ptr<juce::AudioProcessorValueTreeState::SliderAttachment> widthAttachment;
     std::unique_ptr<juce::AudioProcessorValueTreeState::ButtonAttachment> sendModeAttachment;
 
-    juce::File presetDir;
+    std::unique_ptr<juce::AudioProcessorValueTreeState::SliderAttachment> mixAttachment;
+
+    juce::File presetDir, alphaPresetDir;
+    std::array<juce::Image, 5> backgrounds, centralArtwork;
+    juce::Image screwArtwork;
     std::unique_ptr<juce::FileChooser> fileChooser;
 
     // --- NUOVI COMPONENTI PER IL PANNELLO ADVANCED ---
@@ -56,10 +61,6 @@ private:
     std::array<StereoScope::Frame, 256> scopeHistory{};
     std::array<juce::RangedAudioParameter*, 2> dragParameters{};
     int draggedNodeIndex = -1;
-
-    float randomOffsetX = 0.0f;
-    float randomOffsetY = 0.0f;
-    float randomRotation = 0.0f;
 
     juce::AffineTransform layoutTransform() const;
     void beginDragGesture(const juce::String& xId, const juce::String& yId);

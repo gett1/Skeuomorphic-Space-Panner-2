@@ -1,8 +1,8 @@
 <?xml version="1.0" encoding="UTF-8"?>
 
-<JUCERPROJECT id="Aqip1z" name="GettoneSpacePanner_Hardware" projectType="audioplug" version="2.0.0" pluginManufacturerCode="Manu" pluginCode="Aqip"
+<JUCERPROJECT id="Aqip1z" name="GettoneSpacePanner_Hardware" projectType="audioplug" version="2.0.1" pluginManufacturerCode="Manu" pluginCode="SpAw"
               useAppConfig="0" addUsingNamespaceToJuceHeader="0" jucerFormatVersion="1"
-              pluginName="Skeuomorphic Panner"
+              pluginName="Skeuomorphic Space Panner Alpha"
               pluginVST3Category="Spatial,Tools" companyName="gett1" companyCopyright="gett1">
   <MAINGROUP id="UxU6za" name="GettoneSpacePanner_Hardware">
     <GROUP id="{3FD3F896-AC8C-AE8C-7A79-34984EF6C034}" name="Resources">
@@ -53,8 +53,8 @@
   <EXPORTFORMATS>
     <VS2026 targetFolder="Builds/VisualStudio2026">
       <CONFIGURATIONS>
-        <CONFIGURATION isDebug="1" name="Debug" targetName="SkeuomorphicPanner"/>
-        <CONFIGURATION isDebug="0" name="Release" targetName="GettoneSpacePanner"/>
+        <CONFIGURATION isDebug="1" name="Debug" targetName="Skeuomorphic Space Panner Alpha"/>
+        <CONFIGURATION isDebug="0" name="Release" targetName="Skeuomorphic Space Panner Alpha"/>
       </CONFIGURATIONS>
       <MODULEPATHS>
         <MODULEPATH id="juce_audio_basics" path="../../JUCE/modules"/>

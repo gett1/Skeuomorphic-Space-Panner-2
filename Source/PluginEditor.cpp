@@ -8,6 +8,36 @@ namespace {
 const juce::Colour ivory(0xfff0e3ca);
 const juce::Colour brass(0xffd5b479);
 
+constexpr auto artworkFolder = "Skeuomorphic Space Panner Alpha Artwork";
+
+juce::File findArtwork()
+{
+    const auto executable = juce::File::getSpecialLocation(juce::File::currentExecutableFile);
+    const auto executableDirectory = executable.getParentDirectory();
+    const auto contents = executableDirectory.getParentDirectory();
+    const auto bundleDirectory = contents.getParentDirectory().getParentDirectory();
+    const auto documents = juce::File::getSpecialLocation(juce::File::userDocumentsDirectory);
+    const auto packaged = contents.getFileName() == "Contents"
+        ? contents.getChildFile("Resources").getChildFile(artworkFolder) : executableDirectory.getChildFile(artworkFolder);
+
+    for (const auto& path : { packaged, bundleDirectory.getChildFile(artworkFolder),
+                              bundleDirectory.getParentDirectory().getChildFile(artworkFolder),
+                              documents.getChildFile(artworkFolder) })
+        if (path.isDirectory())
+            return path;
+
+    return {};
+}
+
+juce::Image loadArtwork(const juce::File& folder, const char* filename, const char* fallback, int fallbackSize)
+{
+    if (folder.isDirectory())
+        if (auto image = juce::ImageCache::getFromFile(folder.getChildFile(filename)); image.isValid())
+            return image;
+
+    return juce::ImageCache::getFromMemory(fallback, fallbackSize);
+}
+
 juce::Typeface::Ptr pixelTypeface()
 {
     static const auto face = juce::Typeface::createSystemTypefaceFor(
@@ -116,6 +146,22 @@ GettoneSpacePannerEditor::GettoneSpacePannerEditor(GettoneSpacePannerProcessor& 
     : AudioProcessorEditor(&p), audioProcessor(p), hardwareLook(std::make_unique<HardwareLookAndFeel>())
 {
     setLookAndFeel(hardwareLook.get());
+    const auto folder = findArtwork();
+    backgrounds = {
+        loadArtwork(folder, "wood_kawaii.jpg", BinaryData::wood_kawaii_jpg, BinaryData::wood_kawaii_jpgSize),
+        loadArtwork(folder, "wood_garage.jpg", BinaryData::wood_garage_jpg, BinaryData::wood_garage_jpgSize),
+        loadArtwork(folder, "wood_beach.jpg", BinaryData::wood_beach_jpg, BinaryData::wood_beach_jpgSize),
+        loadArtwork(folder, "wood_cosmic.jpg", BinaryData::wood_cosmic_jpg, BinaryData::wood_cosmic_jpgSize),
+        loadArtwork(folder, "wood_vintage.jpg", BinaryData::wood_vintage_jpg, BinaryData::wood_vintage_jpgSize)
+    };
+    centralArtwork = {
+        loadArtwork(folder, "anime.png", BinaryData::anime_png, BinaryData::anime_pngSize),
+        loadArtwork(folder, "graffiti.png", BinaryData::graffiti_png, BinaryData::graffiti_pngSize),
+        loadArtwork(folder, "beach.png", BinaryData::beach_png, BinaryData::beach_pngSize),
+        loadArtwork(folder, "cosmic.png", BinaryData::cosmic_png, BinaryData::cosmic_pngSize),
+        loadArtwork(folder, "tree.png", BinaryData::tree_png, BinaryData::tree_pngSize)
+    };
+    screwArtwork = loadArtwork(folder, "screw.png", BinaryData::screw_png, BinaryData::screw_pngSize);
     themeSelector.addItem("Kawaii", 1);
     themeSelector.addItem("Dark Garage", 2);
     themeSelector.addItem("Tropical Beach", 3);
@@ -136,14 +182,18 @@ GettoneSpacePannerEditor::GettoneSpacePannerEditor(GettoneSpacePannerProcessor& 
     bypassAttachment = std::make_unique<juce::AudioProcessorValueTreeState::ButtonAttachment>(audioProcessor.treeState, "bypass", bypassButton);
 
     presetDir = juce::File::getSpecialLocation(juce::File::userDocumentsDirectory).getChildFile("GettoneSpacePanner_Presets");
-    if (!presetDir.exists()) presetDir.createDirectory();
+    alphaPresetDir = presetDir.getSiblingFile("GettoneSpacePanner_Alpha_Presets");
+    alphaPresetDir.createDirectory();
 
     addAndMakeVisible(presetSelector);
     refreshPresetList();
 
     presetSelector.onChange = [this] {
         if (presetSelector.getSelectedId() > 1) {
-            juce::File f = presetDir.getChildFile(presetSelector.getText() + ".xml");
+            const auto name = presetSelector.getText() + ".xml";
+            auto f = alphaPresetDir.getChildFile(name);
+            if (!f.existsAsFile())
+                f = presetDir.getChildFile(name);
             if (f.existsAsFile()) {
                 std::unique_ptr<juce::XmlElement> xml = juce::XmlDocument::parse(f);
                 if (xml != nullptr) audioProcessor.restoreVersionedState(juce::ValueTree::fromXml(*xml));
@@ -154,7 +204,7 @@ GettoneSpacePannerEditor::GettoneSpacePannerEditor(GettoneSpacePannerProcessor& 
     savePresetButton.setButtonText("SAVE");
     addAndMakeVisible(savePresetButton);
     savePresetButton.onClick = [this] {
-        fileChooser = std::make_unique<juce::FileChooser>("Save Preset", presetDir, "*.xml");
+        fileChooser = std::make_unique<juce::FileChooser>("Save Preset", alphaPresetDir, "*.xml");
         fileChooser->launchAsync(juce::FileBrowserComponent::saveMode | juce::FileBrowserComponent::canSelectFiles,
             [this](const juce::FileChooser& fc) {
                 auto file = fc.getResult();
@@ -181,6 +231,14 @@ GettoneSpacePannerEditor::GettoneSpacePannerEditor(GettoneSpacePannerProcessor& 
     setupSlider(outGainSlider, 0.0); outGainAttachment = std::make_unique<juce::AudioProcessorValueTreeState::SliderAttachment>(audioProcessor.treeState, "outGain", outGainSlider);
     setupSlider(revSizeSlider, 1.0); revSizeAttachment = std::make_unique<juce::AudioProcessorValueTreeState::SliderAttachment>(audioProcessor.treeState, "revSize", revSizeSlider);
     setupSlider(widthSlider, 1.0); widthAttachment = std::make_unique<juce::AudioProcessorValueTreeState::SliderAttachment>(audioProcessor.treeState, "width", widthSlider);
+
+    mixSlider.setSliderStyle(juce::Slider::LinearHorizontal);
+    mixSlider.setTextBoxStyle(juce::Slider::TextBoxRight, false, 48, 18);
+    mixSlider.setName("Mix");
+    mixSlider.setTooltip("Mix: original input to complete effect. In SEND it controls the wet return level.");
+    mixSlider.setDoubleClickReturnValue(true, 1.0);
+    addAndMakeVisible(mixSlider);
+    mixAttachment = std::make_unique<juce::AudioProcessorValueTreeState::SliderAttachment>(audioProcessor.treeState, "mix", mixSlider);
 
     sendModeButton.setAlpha(0.0f);
     addChildComponent(sendModeButton);
@@ -212,11 +270,6 @@ GettoneSpacePannerEditor::GettoneSpacePannerEditor(GettoneSpacePannerProcessor& 
     setResizeLimits(500, 400, 1200, 960);
     setSize(680, 520);
 
-    auto& randomGenerator = juce::Random::getSystemRandom();
-    randomOffsetX = randomGenerator.nextFloat() * 40.0f - 20.0f;
-    randomOffsetY = randomGenerator.nextFloat() * 40.0f - 20.0f;
-    randomRotation = randomGenerator.nextFloat() * 0.2f - 0.1f;
-
     startTimerHz(30);
 }
 
@@ -241,16 +294,18 @@ void GettoneSpacePannerEditor::timerCallback()
 void GettoneSpacePannerEditor::refreshPresetList() {
     presetSelector.clear();
     presetSelector.addItem("Default", 1);
-    int id = 2;
-    for (auto f : presetDir.findChildFiles(juce::File::findFiles, false, "*.xml")) {
-        presetSelector.addItem(f.getFileNameWithoutExtension(), id++);
-    }
+    juce::StringArray names;
+    for (const auto& folder : { alphaPresetDir, presetDir })
+        for (const auto& file : folder.findChildFiles(juce::File::findFiles, false, "*.xml"))
+            names.addIfNotAlreadyThere(file.getFileNameWithoutExtension());
+    names.sort(true);
+    presetSelector.addItemList(names, 2);
     if (presetSelector.getSelectedId() == 0) presetSelector.setSelectedId(1, juce::dontSendNotification);
 }
 
 void GettoneSpacePannerEditor::paint(juce::Graphics& g)
 {
-    int themeChoice = (int)audioProcessor.treeState.getRawParameterValue("theme")->load();
+    const auto themeChoice = juce::jlimit(0, 4, static_cast<int>(audioProcessor.treeState.getRawParameterValue("theme")->load()));
     bool isBypassed = audioProcessor.treeState.getRawParameterValue("bypass")->load() > 0.5f;
 
     juce::Colour plateHighlight, plateShadow, accentColor, screenBgColor, cursorCoreColor;
@@ -289,16 +344,14 @@ void GettoneSpacePannerEditor::paint(juce::Graphics& g)
     erLevelSlider.setColour(juce::Slider::backgroundColourId, juce::Colours::black.withAlpha(0.8f));
     erLevelSlider.setColour(juce::Slider::thumbColourId, accentColor);
 
-    // 1. IL TAVOLO DI LEGNO
+    mixSlider.setColour(juce::Slider::trackColourId, accentColor.withAlpha(0.48f));
+    mixSlider.setColour(juce::Slider::backgroundColourId, juce::Colours::black.withAlpha(0.55f));
+    mixSlider.setColour(juce::Slider::thumbColourId, accentColor);
+    mixSlider.setColour(juce::Slider::textBoxTextColourId, ivory);
+    mixSlider.setColour(juce::Slider::textBoxOutlineColourId, juce::Colours::transparentBlack);
+
     g.fillAll(juce::Colours::black);
-    juce::Image woodImg;
-
-    if (themeChoice == 0)      woodImg = juce::ImageCache::getFromMemory(BinaryData::wood_kawaii_jpg, BinaryData::wood_kawaii_jpgSize);
-    else if (themeChoice == 1) woodImg = juce::ImageCache::getFromMemory(BinaryData::wood_garage_jpg, BinaryData::wood_garage_jpgSize);
-    else if (themeChoice == 2) woodImg = juce::ImageCache::getFromMemory(BinaryData::wood_beach_jpg, BinaryData::wood_beach_jpgSize);
-    else if (themeChoice == 3) woodImg = juce::ImageCache::getFromMemory(BinaryData::wood_cosmic_jpg, BinaryData::wood_cosmic_jpgSize);
-    else                       woodImg = juce::ImageCache::getFromMemory(BinaryData::wood_vintage_jpg, BinaryData::wood_vintage_jpgSize);
-
+    const auto& woodImg = backgrounds[static_cast<size_t>(themeChoice)];
     if (woodImg.isValid()) g.drawImage(woodImg, getLocalBounds().toFloat(), juce::RectanglePlacement::fillDestination, false);
     else { g.setColour(juce::Colour(0xff111111)); g.fillRect(getLocalBounds().toFloat()); }
 
@@ -325,7 +378,7 @@ void GettoneSpacePannerEditor::paint(juce::Graphics& g)
     g.setColour(juce::Colours::black.withAlpha(0.7f));
     g.drawRoundedRectangle(mainPlate.reduced(1.0f), 11.0f, 1.5f);
 
-    juce::Image screwImg = juce::ImageCache::getFromMemory(BinaryData::screw_png, BinaryData::screw_pngSize);
+    const auto& screwImg = screwArtwork;
     float screwSize = 16.0f;
     float margin = 10.0f;
 
@@ -363,7 +416,11 @@ void GettoneSpacePannerEditor::paint(juce::Graphics& g)
     drawCat(g, { 40.0f, 30.0f, 32.0f, 34.0f }, {});
     g.setColour(ivory);
     g.setFont(pixel(16.0f));
-    g.drawFittedText("SPACE PANNER", { 76, 30, 103, 34 }, juce::Justification::centredLeft, 1);
+    g.drawFittedText("SPACE PANNER", { 76, 29, 103, 24 }, juce::Justification::centredLeft, 1);
+    g.setFont(pixel(9.5f));
+    g.drawFittedText("ALPHA", { 76, 49, 103, 12 }, juce::Justification::centredLeft, 1);
+    g.setFont(pixel(11.0f));
+    g.drawText("MIX", juce::Rectangle<int>{ 230, 477, 33, 21 }, juce::Justification::centredLeft);
 
     // PANNELLO METER SINISTRO
     float pL = audioProcessor.peakL.load();
@@ -429,28 +486,21 @@ void GettoneSpacePannerEditor::paint(juce::Graphics& g)
     g.saveState();
     g.reduceClipRegion(screenArea.toNearestInt());
 
-    juce::Image themeImg;
-    if (themeChoice == 0) themeImg = juce::ImageCache::getFromMemory(BinaryData::anime_png, BinaryData::anime_pngSize);
-    else if (themeChoice == 1) themeImg = juce::ImageCache::getFromMemory(BinaryData::graffiti_png, BinaryData::graffiti_pngSize);
-    else if (themeChoice == 2) themeImg = juce::ImageCache::getFromMemory(BinaryData::beach_png, BinaryData::beach_pngSize);
-    else if (themeChoice == 3) themeImg = juce::ImageCache::getFromMemory(BinaryData::cosmic_png, BinaryData::cosmic_pngSize);
-    else if (themeChoice == 4) themeImg = juce::ImageCache::getFromMemory(BinaryData::tree_png, BinaryData::tree_pngSize);
-
-    if (themeImg.isValid()) {
-        float imgAspect = (float)themeImg.getWidth() / (float)themeImg.getHeight();
-        float targetHeight = screenArea.getHeight() * 0.95f;
-        float targetWidth = targetHeight * imgAspect;
-        juce::Rectangle<float> imgRect(screenArea.getCentreX() - targetWidth / 2.0f,
-            screenArea.getCentreY() - targetHeight / 2.0f,
-            targetWidth, targetHeight);
-
-        juce::AffineTransform transform = juce::AffineTransform::rotation(randomRotation, screenArea.getCentreX(), screenArea.getCentreY())
-            .translated(randomOffsetX, randomOffsetY);
-        g.addTransform(transform);
-        g.setOpacity(0.35f);
-        g.drawImage(themeImg, imgRect, juce::RectanglePlacement::centred, false);
-        g.setOpacity(1.0f);
-        g.addTransform(transform.inverted());
+    const auto& themeImg = centralArtwork[static_cast<size_t>(themeChoice)];
+    if (themeImg.isValid())
+    {
+        const auto artBounds = screenArea.reduced(22.0f, 24.0f);
+        if (themeChoice == 0 || themeChoice == 1)
+        {
+            g.setColour(accentColor.withAlpha(0.38f));
+            g.drawImage(themeImg, artBounds, juce::RectanglePlacement::centred, true);
+        }
+        else
+        {
+            g.setOpacity(0.65f);
+            g.drawImage(themeImg, artBounds, juce::RectanglePlacement::centred, false);
+            g.setOpacity(1.0f);
+        }
     }
 
     {
@@ -462,8 +512,8 @@ void GettoneSpacePannerEditor::paint(juce::Graphics& g)
             float y = juce::jlimit(scopeBounds.getY(), scopeBounds.getBottom(), juce::jmap(r * 1.5f, -1.0f, 1.0f, scopeBounds.getBottom(), scopeBounds.getY()));
             if (i == 0) lissajous.startNewSubPath(x, y); else lissajous.lineTo(x, y);
         }
-        g.setColour(accentColor.withAlpha(isBypassed ? 0.35f : 0.7f));
-        g.strokePath(lissajous, juce::PathStrokeType(3.5f, juce::PathStrokeType::curved));
+        g.setColour(accentColor.withAlpha(isBypassed ? 0.26f : 0.57f));
+        g.strokePath(lissajous, juce::PathStrokeType(2.1f, juce::PathStrokeType::curved));
 
         if (!isBypassed)
         {
@@ -668,6 +718,7 @@ void GettoneSpacePannerEditor::resized()
     place(themeSelector, { 185, 35, 152, 24 });
     place(bypassButton, { 345, 35, 76, 24 });
     place(roomModeSelector, { 105, 477, 101, 21 });
+    place(mixSlider, { 264, 478, 299, 19 });
     place(presetSelector, { 429, 35, 118, 24 });
     place(savePresetButton, { 555, 35, 52, 24 });
 

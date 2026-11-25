@@ -10,8 +10,8 @@ param(
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 $root = Split-Path -Parent $PSScriptRoot
-$version = '2.0.0-alpha'
-$bundleName = 'Skeuomorphic Space Panner.vst3'
+$version = '2.0.1-alpha'
+$bundleName = 'Skeuomorphic Space Panner Alpha.vst3'
 $cmake = (Get-Command cmake -CommandType Application).Source
 
 function Invoke-BuildTool {
@@ -67,7 +67,7 @@ try {
     Copy-Item -LiteralPath (Join-Path $root 'Manuali') -Destination $stage -Recurse
     Copy-Item -LiteralPath (Join-Path $root 'LEGGIMI.txt') -Destination $stage
     Copy-Item -LiteralPath (Join-Path $root 'Assets\OFL.txt') -Destination (Join-Path $stage 'PixelifySans-OFL.txt')
-    $installer = 'Skeuomorphic_Space_Panner_Win_Installer.exe'
+    $installer = 'Skeuomorphic_Space_Panner_Alpha_Win_Installer.exe'
     if (-not (Test-Path -LiteralPath (Join-Path $stage $installer) -PathType Leaf)) {
         throw 'Installer output missing.'
     }
