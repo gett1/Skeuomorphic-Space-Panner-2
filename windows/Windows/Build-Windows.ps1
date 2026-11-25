@@ -1,7 +1,7 @@
 [CmdletBinding()]
 param(
     [string]$JucePath = 'D:\JUCE',
-    [string]$BuildDir = 'build-vs18',
+    [string]$BuildDir = 'build-vs18-alpha',
     [string]$Iscc,
     [string]$Rar,
     [switch]$PluginOnly
@@ -10,7 +10,7 @@ param(
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 $root = Split-Path -Parent $PSScriptRoot
-$version = '1.1.0'
+$version = '2.0.0-alpha'
 $bundleName = 'Skeuomorphic Space Panner.vst3'
 $cmake = (Get-Command cmake -CommandType Application).Source
 

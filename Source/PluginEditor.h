@@ -13,10 +13,10 @@ public:
 
     void mouseDown(const juce::MouseEvent& e) override;
     void mouseDrag(const juce::MouseEvent& e) override;
-    void mouseUp(const juce::MouseEvent& e) override; // Aggiunto per rilasciare i nodi
+    void mouseUp(const juce::MouseEvent& e) override;
     void mouseWheelMove(const juce::MouseEvent& e, const juce::MouseWheelDetails& wheel) override;
 
-    void timerCallback() override { repaint(); }
+    void timerCallback() override;
 
 private:
     GettoneSpacePannerProcessor& audioProcessor;
@@ -24,6 +24,7 @@ private:
     std::unique_ptr<juce::LookAndFeel_V4> hardwareLook;
 
     juce::ComboBox themeSelector;
+    juce::ComboBox roomModeSelector;
     juce::ToggleButton bypassButton{ "BYPASS" };
     juce::ComboBox presetSelector;
     juce::TextButton savePresetButton{ "SAVE" };
@@ -34,7 +35,7 @@ private:
     juce::Slider widthSlider;
     juce::ToggleButton sendModeButton{ "SEND MODE" };
 
-    std::unique_ptr<juce::AudioProcessorValueTreeState::ComboBoxAttachment> themeAttachment;
+    std::unique_ptr<juce::AudioProcessorValueTreeState::ComboBoxAttachment> themeAttachment, roomModeAttachment;
     std::unique_ptr<juce::AudioProcessorValueTreeState::ButtonAttachment> bypassAttachment;
     std::unique_ptr<juce::AudioProcessorValueTreeState::SliderAttachment> inGainAttachment;
     std::unique_ptr<juce::AudioProcessorValueTreeState::SliderAttachment> outGainAttachment;
@@ -52,6 +53,8 @@ private:
     juce::Slider erLevelSlider;
     std::unique_ptr<juce::AudioProcessorValueTreeState::SliderAttachment> erLevelAttachment;
 
+    std::array<StereoScope::Frame, 256> scopeHistory{};
+    std::array<juce::RangedAudioParameter*, 2> dragParameters{};
     int draggedNodeIndex = -1;
 
     float randomOffsetX = 0.0f;
@@ -59,6 +62,8 @@ private:
     float randomRotation = 0.0f;
 
     juce::AffineTransform layoutTransform() const;
+    void beginDragGesture(const juce::String& xId, const juce::String& yId);
+    void endDragGesture();
     void updateParametersFromMouse(juce::Point<float> mousePos);
     void refreshPresetList();
 

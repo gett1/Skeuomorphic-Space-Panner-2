@@ -1,5 +1,6 @@
 #include "PluginProcessor.h"
 #include "PluginEditor.h"
+#include <BinaryData.h>
 
 #include "Gett1Cat.h"
 
@@ -123,6 +124,13 @@ GettoneSpacePannerEditor::GettoneSpacePannerEditor(GettoneSpacePannerProcessor& 
     addAndMakeVisible(themeSelector);
     themeAttachment = std::make_unique<juce::AudioProcessorValueTreeState::ComboBoxAttachment>(audioProcessor.treeState, "theme", themeSelector);
 
+    roomModeSelector.addItem("Legacy", 1);
+    roomModeSelector.addItem("Neutral", 2);
+    roomModeSelector.setTooltip("Neutral passes the input through while all spatial controls are at their defaults.");
+    addAndMakeVisible(roomModeSelector);
+    roomModeAttachment = std::make_unique<juce::AudioProcessorValueTreeState::ComboBoxAttachment>(
+        audioProcessor.treeState, "roomMode", roomModeSelector);
+
     bypassButton.setButtonText("BYPASS");
     addAndMakeVisible(bypassButton);
     bypassAttachment = std::make_unique<juce::AudioProcessorValueTreeState::ButtonAttachment>(audioProcessor.treeState, "bypass", bypassButton);
@@ -138,7 +146,7 @@ GettoneSpacePannerEditor::GettoneSpacePannerEditor(GettoneSpacePannerProcessor& 
             juce::File f = presetDir.getChildFile(presetSelector.getText() + ".xml");
             if (f.existsAsFile()) {
                 std::unique_ptr<juce::XmlElement> xml = juce::XmlDocument::parse(f);
-                if (xml != nullptr) audioProcessor.treeState.replaceState(juce::ValueTree::fromXml(*xml));
+                if (xml != nullptr) audioProcessor.restoreVersionedState(juce::ValueTree::fromXml(*xml));
             }
         }
         };
@@ -151,7 +159,7 @@ GettoneSpacePannerEditor::GettoneSpacePannerEditor(GettoneSpacePannerProcessor& 
             [this](const juce::FileChooser& fc) {
                 auto file = fc.getResult();
                 if (file != juce::File{}) {
-                    auto state = audioProcessor.treeState.copyState();
+                    auto state = audioProcessor.copyVersionedState();
                     std::unique_ptr<juce::XmlElement> xml(state.createXml());
                     xml->writeTo(file);
                     refreshPresetList();
@@ -209,12 +217,25 @@ GettoneSpacePannerEditor::GettoneSpacePannerEditor(GettoneSpacePannerProcessor& 
     randomOffsetY = randomGenerator.nextFloat() * 40.0f - 20.0f;
     randomRotation = randomGenerator.nextFloat() * 0.2f - 0.1f;
 
-    startTimerHz(60);
+    startTimerHz(30);
 }
 
 GettoneSpacePannerEditor::~GettoneSpacePannerEditor() {
     stopTimer();
+    endDragGesture();
+    audioProcessor.scope.setActive(false);
     setLookAndFeel(nullptr);
+}
+
+void GettoneSpacePannerEditor::timerCallback()
+{
+    const bool showing = isShowing();
+    audioProcessor.scope.setActive(showing);
+    if (showing)
+    {
+        audioProcessor.scope.readLatest(scopeHistory);
+        repaint();
+    }
 }
 
 void GettoneSpacePannerEditor::refreshPresetList() {
@@ -432,38 +453,38 @@ void GettoneSpacePannerEditor::paint(juce::Graphics& g)
         g.addTransform(transform.inverted());
     }
 
-    if (isBypassed) {
-        g.setColour(juce::Colours::black.withAlpha(0.85f)); g.fillRoundedRectangle(screenArea, 6.0f);
-        g.setColour(juce::Colours::red.withAlpha(0.8f));
-        g.setFont(pixel(38.0f));
-        g.drawText("BYPASSED", screenArea, juce::Justification::centred, false);
-    }
-    else {
+    {
         juce::Rectangle<float> scopeBounds = screenArea.reduced(20.0f);
         juce::Path lissajous;
-        int idx = audioProcessor.scopeIndex.load(std::memory_order_acquire);
-        for (int i = 0; i < 512; ++i) {
-            int readIdx = (idx - i + 1024) % 1024;
-            float l = audioProcessor.scopeL[(size_t) readIdx].load(std::memory_order_relaxed);
-            float r = audioProcessor.scopeR[(size_t) readIdx].load(std::memory_order_relaxed);
+        for (size_t i = 0; i < scopeHistory.size(); ++i) {
+            const auto [l, r] = scopeHistory[i];
             float x = juce::jlimit(scopeBounds.getX(), scopeBounds.getRight(), juce::jmap(l * 1.5f, -1.0f, 1.0f, scopeBounds.getX(), scopeBounds.getRight()));
             float y = juce::jlimit(scopeBounds.getY(), scopeBounds.getBottom(), juce::jmap(r * 1.5f, -1.0f, 1.0f, scopeBounds.getBottom(), scopeBounds.getY()));
             if (i == 0) lissajous.startNewSubPath(x, y); else lissajous.lineTo(x, y);
         }
-        g.setColour(accentColor.withAlpha(0.7f));
+        g.setColour(accentColor.withAlpha(isBypassed ? 0.35f : 0.7f));
         g.strokePath(lissajous, juce::PathStrokeType(3.5f, juce::PathStrokeType::curved));
 
-        float curX = audioProcessor.treeState.getRawParameterValue("posX")->load();
-        float curY = audioProcessor.treeState.getRawParameterValue("posY")->load();
-        float curZ = audioProcessor.treeState.getRawParameterValue("posZ")->load();
-        float baseSize = juce::jmap(curZ, 0.0f, 1.0f, 45.0f, 12.0f);
+        if (!isBypassed)
+        {
+            const auto curX = audioProcessor.treeState.getRawParameterValue("posX")->load();
+            float curY = audioProcessor.treeState.getRawParameterValue("posY")->load();
+            float curZ = audioProcessor.treeState.getRawParameterValue("posZ")->load();
+            float baseSize = juce::jmap(curZ, 0.0f, 1.0f, 45.0f, 12.0f);
 
-        float drawX = juce::jmap(curX, -1.0f, 1.0f, scopeBounds.getX(), scopeBounds.getRight());
-        float drawY = juce::jmap(curY, 1.0f, -1.0f, scopeBounds.getY(), scopeBounds.getBottom());
+            float drawX = juce::jmap(curX, -1.0f, 1.0f, scopeBounds.getX(), scopeBounds.getRight());
+            float drawY = juce::jmap(curY, 1.0f, -1.0f, scopeBounds.getY(), scopeBounds.getBottom());
 
-        g.setColour(accentColor.withAlpha(0.2f)); g.fillEllipse(drawX - baseSize, drawY - baseSize, baseSize * 2.0f, baseSize * 2.0f);
-        g.setColour(accentColor.withAlpha(0.6f)); g.fillEllipse(drawX - (baseSize * 0.7f), drawY - (baseSize * 0.7f), baseSize * 1.4f, baseSize * 1.4f);
-        g.setColour(cursorCoreColor.withMultipliedBrightness(1.0f - (curZ * 0.3f))); g.fillEllipse(drawX - (baseSize * 0.4f), drawY - (baseSize * 0.4f), baseSize * 0.8f, baseSize * 0.8f);
+            g.setColour(accentColor.withAlpha(0.2f)); g.fillEllipse(drawX - baseSize, drawY - baseSize, baseSize * 2.0f, baseSize * 2.0f);
+            g.setColour(accentColor.withAlpha(0.6f)); g.fillEllipse(drawX - (baseSize * 0.7f), drawY - (baseSize * 0.7f), baseSize * 1.4f, baseSize * 1.4f);
+            g.setColour(cursorCoreColor.withMultipliedBrightness(1.0f - (curZ * 0.3f))); g.fillEllipse(drawX - (baseSize * 0.4f), drawY - (baseSize * 0.4f), baseSize * 0.8f, baseSize * 0.8f);
+        }
+        else
+        {
+            g.setColour(juce::Colours::red.withAlpha(0.8f));
+            g.setFont(pixel(24.0f));
+            g.drawText("BYPASSED", screenArea.withHeight(36.0f), juce::Justification::centred, false);
+        }
     }
     g.restoreState();
 
@@ -646,6 +667,7 @@ void GettoneSpacePannerEditor::resized()
 
     place(themeSelector, { 185, 35, 152, 24 });
     place(bypassButton, { 345, 35, 76, 24 });
+    place(roomModeSelector, { 105, 477, 101, 21 });
     place(presetSelector, { 429, 35, 118, 24 });
     place(savePresetButton, { 555, 35, 52, 24 });
 
@@ -659,74 +681,103 @@ void GettoneSpacePannerEditor::resized()
     erLevelSlider.setVisible(isAdvancedPanelOpen);
 }
 
-void GettoneSpacePannerEditor::updateParametersFromMouse(juce::Point<float> m)
+void GettoneSpacePannerEditor::beginDragGesture(const juce::String& xId, const juce::String& yId)
 {
-    if (audioProcessor.treeState.getRawParameterValue("bypass")->load() > 0.5f) return;
-
-    juce::Rectangle<float> screenArea(105.0f, 75.0f, 465.0f, 400.0f);
-
-    if (draggedNodeIndex == -1) {
-        juce::Rectangle<float> scopeBounds = screenArea.reduced(20.0f);
-        audioProcessor.treeState.getParameter("posX")->setValueNotifyingHost(audioProcessor.treeState.getParameter("posX")->convertTo0to1(juce::jlimit(-1.0f, 1.0f, juce::jmap((float)m.x, scopeBounds.getX(), scopeBounds.getRight(), -1.0f, 1.0f))));
-        audioProcessor.treeState.getParameter("posY")->setValueNotifyingHost(audioProcessor.treeState.getParameter("posY")->convertTo0to1(juce::jlimit(-1.0f, 1.0f, juce::jmap((float)m.y, scopeBounds.getBottom(), scopeBounds.getY(), -1.0f, 1.0f))));
-    }
+    dragParameters = { audioProcessor.treeState.getParameter(xId), audioProcessor.treeState.getParameter(yId) };
+    for (auto* parameter : dragParameters)
+        parameter->beginChangeGesture();
 }
 
-void GettoneSpacePannerEditor::mouseDown(const juce::MouseEvent& e) {
-    const auto pos = e.position.transformedBy(layoutTransform().inverted());
-    if (isAdvancedPanelOpen) {
-        juce::Rectangle<float> advScreen(695.0f, 140.0f, 280.0f, 280.0f);
-        if (advScreen.contains(pos)) {
-            float normMouseX = (pos.x - advScreen.getX()) / advScreen.getWidth();
-            float normMouseY = (pos.y - advScreen.getY()) / advScreen.getHeight();
-
-            float minDistance = 999.0f;
-            draggedNodeIndex = -1;
-
-            for (int i = 1; i <= 4; ++i) {
-                float nx = audioProcessor.treeState.getRawParameterValue("node" + juce::String(i) + "X")->load();
-                float ny = audioProcessor.treeState.getRawParameterValue("node" + juce::String(i) + "Y")->load();
-
-                float dist = std::hypot(nx - normMouseX, ny - normMouseY);
-                if (dist < 0.15f && dist < minDistance) {
-                    minDistance = dist;
-                    draggedNodeIndex = i;
-                }
-            }
-            return;
+void GettoneSpacePannerEditor::endDragGesture()
+{
+    for (auto*& parameter : dragParameters)
+        if (parameter != nullptr)
+        {
+            parameter->endChangeGesture();
+            parameter = nullptr;
         }
-    }
-    updateParametersFromMouse(pos);
-}
-
-void GettoneSpacePannerEditor::mouseDrag(const juce::MouseEvent& e) {
-    const auto pos = e.position.transformedBy(layoutTransform().inverted());
-    if (isAdvancedPanelOpen && draggedNodeIndex != -1) {
-        juce::Rectangle<float> advScreen(695.0f, 140.0f, 280.0f, 280.0f);
-
-        float mx = juce::jlimit(0.0f, 1.0f, (pos.x - advScreen.getX()) / advScreen.getWidth());
-        float my = juce::jlimit(0.0f, 1.0f, (pos.y - advScreen.getY()) / advScreen.getHeight());
-
-        audioProcessor.treeState.getParameter("node" + juce::String(draggedNodeIndex) + "X")->setValueNotifyingHost(mx);
-        audioProcessor.treeState.getParameter("node" + juce::String(draggedNodeIndex) + "Y")->setValueNotifyingHost(my);
-        return;
-    }
-    updateParametersFromMouse(pos);
-}
-
-void GettoneSpacePannerEditor::mouseUp(const juce::MouseEvent& e) {
     draggedNodeIndex = -1;
 }
 
-void GettoneSpacePannerEditor::mouseWheelMove(const juce::MouseEvent& e, const juce::MouseWheelDetails& w) {
-    const auto pos = e.position.transformedBy(layoutTransform().inverted());
-    if (audioProcessor.treeState.getRawParameterValue("bypass")->load() > 0.5f) return;
+void GettoneSpacePannerEditor::mouseDown(const juce::MouseEvent& e)
+{
+    endDragGesture();
+    if (audioProcessor.treeState.getRawParameterValue("bypass")->load() > 0.5f)
+        return;
 
-    if (isAdvancedPanelOpen) {
-        juce::Rectangle<float> advScreen(695.0f, 140.0f, 280.0f, 280.0f);
-        if (advScreen.contains(pos)) return;
+    const auto pos = e.position.transformedBy(layoutTransform().inverted());
+    const juce::Rectangle<float> advScreen(695.0f, 140.0f, 280.0f, 280.0f);
+    if (isAdvancedPanelOpen && advScreen.contains(pos))
+    {
+        const float mouseX = (pos.x - advScreen.getX()) / advScreen.getWidth();
+        const float mouseY = (pos.y - advScreen.getY()) / advScreen.getHeight();
+        float minDistance = 0.15f;
+        for (int i = 1; i <= 4; ++i)
+        {
+            const auto node = "node" + juce::String(i);
+            const float nx = audioProcessor.treeState.getRawParameterValue(node + "X")->load();
+            const float ny = audioProcessor.treeState.getRawParameterValue(node + "Y")->load();
+            const float distance = std::hypot(nx - mouseX, ny - mouseY);
+            if (distance < minDistance)
+            {
+                minDistance = distance;
+                draggedNodeIndex = i;
+            }
+        }
+        if (draggedNodeIndex != -1)
+        {
+            const auto node = "node" + juce::String(draggedNodeIndex);
+            beginDragGesture(node + "X", node + "Y");
+        }
+        return;
     }
 
-    float nZ = juce::jlimit(0.0f, 1.0f, audioProcessor.treeState.getRawParameterValue("posZ")->load() - (w.deltaY * 0.15f));
-    audioProcessor.treeState.getParameter("posZ")->setValueNotifyingHost(audioProcessor.treeState.getParameter("posZ")->convertTo0to1(nZ));
+    const juce::Rectangle<float> pad(105.0f, 75.0f, 465.0f, 400.0f);
+    if (pad.contains(pos))
+    {
+        beginDragGesture("posX", "posY");
+        updateParametersFromMouse(pos);
+    }
+}
+
+void GettoneSpacePannerEditor::updateParametersFromMouse(juce::Point<float> pos)
+{
+    if (dragParameters[0] == nullptr || audioProcessor.treeState.getRawParameterValue("bypass")->load() > 0.5f)
+        return;
+
+    const bool isNode = draggedNodeIndex != -1;
+    const auto bounds = isNode ? juce::Rectangle<float>(695.0f, 140.0f, 280.0f, 280.0f)
+                               : juce::Rectangle<float>(105.0f, 75.0f, 465.0f, 400.0f).reduced(20.0f);
+    const float x = juce::jlimit(0.0f, 1.0f, (pos.x - bounds.getX()) / bounds.getWidth());
+    const float y = juce::jlimit(0.0f, 1.0f, (pos.y - bounds.getY()) / bounds.getHeight());
+    dragParameters[0]->setValueNotifyingHost(x);
+    dragParameters[1]->setValueNotifyingHost(isNode ? y : 1.0f - y);
+}
+
+void GettoneSpacePannerEditor::mouseDrag(const juce::MouseEvent& e)
+{
+    updateParametersFromMouse(e.position.transformedBy(layoutTransform().inverted()));
+}
+
+void GettoneSpacePannerEditor::mouseUp(const juce::MouseEvent&)
+{
+    endDragGesture();
+}
+
+void GettoneSpacePannerEditor::mouseWheelMove(const juce::MouseEvent& e, const juce::MouseWheelDetails& wheel)
+{
+    const auto pos = e.position.transformedBy(layoutTransform().inverted());
+    const juce::Rectangle<float> pad(105.0f, 75.0f, 465.0f, 400.0f);
+    if (!pad.contains(pos) || audioProcessor.treeState.getRawParameterValue("bypass")->load() > 0.5f)
+        return;
+
+    auto& depth = *audioProcessor.treeState.getParameter("posZ");
+    const float current = depth.getValue();
+    const float next = juce::jlimit(0.0f, 1.0f, current - wheel.deltaY * 0.15f);
+    if (next != current)
+    {
+        depth.beginChangeGesture();
+        depth.setValueNotifyingHost(next);
+        depth.endChangeGesture();
+    }
 }

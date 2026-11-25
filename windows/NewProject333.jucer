@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="UTF-8"?>
 
-<JUCERPROJECT id="Aqip1z" name="GettoneSpacePanner_Hardware" projectType="audioplug" version="1.1.0" pluginManufacturerCode="Manu" pluginCode="Aqip"
+<JUCERPROJECT id="Aqip1z" name="GettoneSpacePanner_Hardware" projectType="audioplug" version="2.0.0" pluginManufacturerCode="Manu" pluginCode="Aqip"
               useAppConfig="0" addUsingNamespaceToJuceHeader="0" jucerFormatVersion="1"
               pluginName="Skeuomorphic Panner"
               pluginVST3Category="Spatial,Tools" companyName="gett1" companyCopyright="gett1">
@@ -21,14 +21,14 @@
             file="immagini Skeuomorphic Panner/wood_vintage.jpg"/>
     </GROUP>
     <GROUP id="{E77F22A1-97EA-9395-4FEE-14FF1B25741C}" name="Source">
-      <FILE id="gttCat" name="Gett1Cat.h" compile="0" resource="0" file="Source/Gett1Cat.h"/>
+      <FILE id="gttCat" name="Gett1Cat.h" compile="0" resource="0" file="../Source/Gett1Cat.h"/>
       <FILE id="qWi0Cl" name="PluginProcessor.cpp" compile="1" resource="0"
-            file="Source/PluginProcessor.cpp"/>
+            file="../Source/PluginProcessor.cpp"/>
       <FILE id="royKWm" name="PluginProcessor.h" compile="0" resource="0"
-            file="Source/PluginProcessor.h"/>
+            file="../Source/PluginProcessor.h"/>
       <FILE id="tJc89E" name="PluginEditor.cpp" compile="1" resource="0"
-            file="Source/PluginEditor.cpp"/>
-      <FILE id="Oev1ID" name="PluginEditor.h" compile="0" resource="0" file="Source/PluginEditor.h"/>
+            file="../Source/PluginEditor.cpp"/>
+      <FILE id="Oev1ID" name="PluginEditor.h" compile="0" resource="0" file="../Source/PluginEditor.h"/>
     </GROUP>
   </MAINGROUP>
   <MODULES>

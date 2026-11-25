@@ -15,7 +15,7 @@ for f in files:
     if not (root / "Resources" / f).is_file():
         errors.append("Risorsa mancante: " + f)
 
-src = (root / "Source" / "PluginEditor.cpp").read_text(encoding="utf-8")
+src = (root.parent / "Source" / "PluginEditor.cpp").read_text(encoding="utf-8")
 cmake = (root / "CMakeLists.txt").read_text(encoding="utf-8")
 for f in files:
     identifier = f.replace(".", "_")
@@ -24,7 +24,7 @@ for f in files:
     if f"Resources/{f}" not in cmake:
         errors.append("Immagine non inclusa nel CMake: " + f)
 for f in ("PluginProcessor.cpp", "PluginProcessor.h", "PluginEditor.cpp", "PluginEditor.h"):
-    if not (root / "Source" / f).is_file():
+    if not (root.parent / "Source" / f).is_file():
         errors.append("Sorgente mancante: " + f)
 if "#include <BinaryData.h>" not in src:
     errors.append("Manca l'include esplicito di BinaryData.h")

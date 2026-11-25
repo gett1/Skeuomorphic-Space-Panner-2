@@ -1,5 +1,7 @@
 # Skeuomorphic Space Panner — porting macOS (gett1)
 
+> Questo documento descrive il porting 1.1.0 e conserva lo storico. Per la 2.0 Alpha usa la [guida di compilazione](../README.md) e la [documentazione DSP Evolution](../Documentation/DSP-Evolution.md). Il codice condiviso si trova in `../Source/`.
+
 ## Stato reale di questa consegna
 
 - Preparato un progetto **CMake/JUCE** portabile a partire dai 4 file originali.

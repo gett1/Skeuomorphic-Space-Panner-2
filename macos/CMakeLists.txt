@@ -2,7 +2,7 @@ cmake_minimum_required(VERSION 3.22)
 
 # Porting macOS per Skeuomorphic Space Panner / gett1.
 # Il progetto precedente era JUCE/Projucer; questa e' una build CMake indipendente.
-project(SkeuomorphicSpacePanner VERSION 1.1.0 LANGUAGES C CXX)
+project(SkeuomorphicSpacePanner VERSION 2.0.0 LANGUAGES C CXX)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -44,10 +44,10 @@ juce_add_plugin(SpacePanner
 juce_generate_juce_header(SpacePanner)
 
 target_sources(SpacePanner PRIVATE
-    Source/PluginProcessor.cpp
-    Source/PluginProcessor.h
-    Source/PluginEditor.cpp
-    Source/PluginEditor.h
+    ../Source/PluginProcessor.cpp
+    ../Source/PluginProcessor.h
+    ../Source/PluginEditor.cpp
+    ../Source/PluginEditor.h
 )
 
 # Tutti gli asset sono dentro la build, SENZA riferimenti al vecchio disco Windows.
@@ -78,3 +78,6 @@ target_link_libraries(SpacePanner PRIVATE
     juce::juce_audio_utils
     juce::juce_dsp
 )
+
+include(../Tests/DspTests.cmake)
+panner_add_dsp_tests(SpacePanner)

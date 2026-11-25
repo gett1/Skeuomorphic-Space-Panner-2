@@ -1,0 +1,114 @@
+name: DSP Alpha build and test
+
+on:
+  push:
+    branches:
+      - develop/v2-neural-engine
+    paths:
+      - '.github/workflows/dsp-alpha.yml'
+      - 'Source/**'
+      - 'Tests/**'
+      - 'windows/**'
+      - 'macos/**'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: dsp-alpha-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  native:
+    name: ${{ matrix.platform }}
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: Windows-x64
+            runner: windows-2025-vs2026
+          - platform: macOS-arm64
+            runner: macos-15
+            arch: arm64
+          - platform: macOS-x86_64
+            runner: macos-15-intel
+            arch: x86_64
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Check out the 1.1.0 reference
+        shell: bash
+        run: git worktree add --detach "$RUNNER_TEMP/panner-legacy" 3cc948da50ad7abcc44b7d66bf2168bb518113af
+
+      - name: Compile Windows VST3 and DSP tests
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          git clone --depth 1 --branch 8.0.16-security https://github.com/juce-framework/JUCE.git "$env:RUNNER_TEMP/JUCE"
+          cmake -S windows -B build-alpha -G "Visual Studio 18 2026" -A x64 `
+            "-DGETT1_JUCE_PATH=$env:RUNNER_TEMP/JUCE" `
+            "-DGETT1_LEGACY_SOURCE_DIR=$env:RUNNER_TEMP/panner-legacy" -DGETT1_BUILD_DSP_TESTS=ON
+          cmake --build build-alpha --config Release --parallel 2 --target GettoneSpacePanner_VST3 PannerDspTests
+
+      - name: Compile macOS VST3, AU, Standalone and DSP tests
+        if: runner.os == 'macOS'
+        shell: bash
+        run: |
+          python3 macos/scripts/verifica_risorse.py
+          cmake -S macos -B build-alpha -G Xcode \
+            -DCMAKE_OSX_ARCHITECTURES="${{ matrix.arch }}" -DCMAKE_OSX_DEPLOYMENT_TARGET=12.0 \
+            -DCMAKE_XCODE_ATTRIBUTE_CODE_SIGNING_ALLOWED=NO \
+            -DGETT1_LEGACY_SOURCE_DIR="$RUNNER_TEMP/panner-legacy" -DGETT1_BUILD_DSP_TESTS=ON
+          cmake --build build-alpha --config Release --parallel 2 \
+            --target SpacePanner_VST3 SpacePanner_AU SpacePanner_Standalone PannerDspTests
+
+      - name: Run processor regressions
+        run: ctest --test-dir build-alpha -C Release --output-on-failure
+
+      - name: Validate Windows VST3
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          Invoke-WebRequest "https://github.com/Tracktion/pluginval/releases/download/v1.0.4/pluginval_Windows.zip" -OutFile "$env:RUNNER_TEMP/pluginval.zip"
+          Expand-Archive "$env:RUNNER_TEMP/pluginval.zip" "$env:RUNNER_TEMP/pluginval"
+          $validator = (Get-ChildItem "$env:RUNNER_TEMP/pluginval" -Filter "pluginval.exe" -Recurse | Select-Object -First 1).FullName
+          & $validator --strictness-level 5 --skip-gui-tests --validate "build-alpha/GettoneSpacePanner_artefacts/Release/VST3/Skeuomorphic Space Panner.vst3"
+
+      - name: Validate macOS VST3 and AU
+        if: runner.os == 'macOS'
+        shell: bash
+        run: |
+          set -euo pipefail
+          release=build-alpha/SpacePanner_artefacts/Release
+          curl --fail --location --retry 3 https://github.com/Tracktion/pluginval/releases/download/v1.0.4/pluginval_macOS.zip -o "$RUNNER_TEMP/pluginval.zip"
+          ditto -x -k "$RUNNER_TEMP/pluginval.zip" "$RUNNER_TEMP/pluginval"
+          validator=$(find "$RUNNER_TEMP/pluginval" -type f -path '*/Contents/MacOS/pluginval' -print -quit)
+          "$validator" --strictness-level 5 --skip-gui-tests --validate "$release/VST3/Skeuomorphic Space Panner.vst3"
+          mkdir -p "$HOME/Library/Audio/Plug-Ins/Components"
+          ditto "$release/AU/Skeuomorphic Space Panner.component" "$HOME/Library/Audio/Plug-Ins/Components/Skeuomorphic Space Panner.component"
+          auval -v aufx Spnr Gett
+
+      - name: Archive test bundles with permissions
+        shell: bash
+        run: |
+          set -euo pipefail
+          stage="$RUNNER_TEMP/panner-alpha"
+          mkdir -p "$stage"
+          cp LICENSE "$stage/"
+          if [[ "$RUNNER_OS" = Windows ]]; then
+            cp windows/Assets/OFL.txt "$stage/PixelifySans-OFL.txt"
+            cp -R build-alpha/GettoneSpacePanner_artefacts/Release/VST3 "$stage/"
+          else
+            cp macos/Resources/OFL.txt "$stage/PixelifySans-OFL.txt"
+            cp -R build-alpha/SpacePanner_artefacts/Release/{VST3,AU,Standalone} "$stage/"
+          fi
+          tar -czf Skeuomorphic_Space_Panner_2.0_Alpha_${{ matrix.platform }}.tar.gz -C "$stage" .
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Skeuomorphic-Space-Panner-2.0-Alpha-${{ matrix.platform }}
+          path: Skeuomorphic_Space_Panner_2.0_Alpha_${{ matrix.platform }}.tar.gz
+          if-no-files-found: error

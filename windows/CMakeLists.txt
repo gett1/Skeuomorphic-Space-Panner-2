@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.22)
-project(SkeuomorphicSpacePanner VERSION 1.1.0 LANGUAGES C CXX)
+project(SkeuomorphicSpacePanner VERSION 2.0.0 LANGUAGES C CXX)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -29,8 +29,8 @@ juce_add_plugin(GettoneSpacePanner
 )
 
 target_sources(GettoneSpacePanner PRIVATE
-    Source/PluginEditor.cpp
-    Source/PluginProcessor.cpp
+    ../Source/PluginEditor.cpp
+    ../Source/PluginProcessor.cpp
 )
 if(MSVC)
     target_compile_options(GettoneSpacePanner PRIVATE /utf-8)
@@ -64,3 +64,6 @@ target_link_libraries(GettoneSpacePanner PRIVATE
     juce::juce_dsp
     juce::juce_recommended_config_flags
 )
+
+include(../Tests/DspTests.cmake)
+panner_add_dsp_tests(GettoneSpacePanner)
