@@ -1,5 +1,5 @@
 #ifndef Version
-  #define Version "2.0.1-alpha"
+  #define Version "2.1.0-alpha"
 #endif
 #ifndef BundleDir
   #error BundleDir is required

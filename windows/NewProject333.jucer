@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="UTF-8"?>
 
-<JUCERPROJECT id="Aqip1z" name="GettoneSpacePanner_Hardware" projectType="audioplug" version="2.0.1" pluginManufacturerCode="Manu" pluginCode="SpAw"
+<JUCERPROJECT id="Aqip1z" name="GettoneSpacePanner_Hardware" projectType="audioplug" version="2.1.0" pluginManufacturerCode="Manu" pluginCode="SpAw"
               useAppConfig="0" addUsingNamespaceToJuceHeader="0" jucerFormatVersion="1"
               pluginName="Skeuomorphic Space Panner Alpha"
               pluginVST3Category="Spatial,Tools" companyName="gett1" companyCopyright="gett1">

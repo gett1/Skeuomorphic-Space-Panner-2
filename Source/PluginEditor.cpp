@@ -29,11 +29,47 @@ juce::File findArtwork()
     return {};
 }
 
+// The portable Windows build keeps the original artwork in a bounded archive
+// at the end of its own module. Copying the module alone retains all eleven images.
+juce::Image loadPackedArtwork(const char* filename)
+{
+    constexpr std::array files{ "anime.png", "beach.png", "cosmic.png", "graffiti.png", "screw.png", "tree.png",
+                                "wood_beach.jpg", "wood_cosmic.jpg", "wood_garage.jpg", "wood_kawaii.jpg", "wood_vintage.jpg" };
+    const auto entry = std::find_if(files.begin(), files.end(), [filename](auto name) { return std::strcmp(name, filename) == 0; });
+    if (entry == files.end())
+        return {};
+
+    juce::FileInputStream stream(juce::File::getSpecialLocation(juce::File::currentExecutableFile));
+    constexpr int64_t footer = 8 + 8 * files.size();
+    const auto total = stream.getTotalLength();
+    if (!stream.openedOk() || total < footer || !stream.setPosition(total - 8))
+        return {};
+    std::array<char, 8> magic{};
+    if (stream.read(magic.data(), magic.size()) != static_cast<int>(magic.size())
+        || std::string_view(magic.data(), magic.size()) != "G1ART210")
+        return {};
+    if (!stream.setPosition(total - footer + (entry - files.begin()) * 8))
+        return {};
+    const auto offset = static_cast<int64_t>(stream.readInt());
+    const auto size = stream.readInt();
+    if (offset < 0 || size <= 0 || size > 8 * 1024 * 1024 || offset + size > total - footer)
+        return {};
+    if (!stream.setPosition(offset))
+        return {};
+    juce::MemoryBlock bytes(static_cast<size_t>(size));
+    if (stream.read(bytes.getData(), size) != size)
+        return {};
+    return juce::ImageFileFormat::loadFrom(bytes.getData(), bytes.getSize());
+}
+
 juce::Image loadArtwork(const juce::File& folder, const char* filename, const char* fallback, int fallbackSize)
 {
     if (folder.isDirectory())
         if (auto image = juce::ImageCache::getFromFile(folder.getChildFile(filename)); image.isValid())
             return image;
+
+    if (auto packed = loadPackedArtwork(filename); packed.isValid())
+        return packed;
 
     return juce::ImageCache::getFromMemory(fallback, fallbackSize);
 }
@@ -143,7 +179,7 @@ public:
 }
 
 GettoneSpacePannerEditor::GettoneSpacePannerEditor(GettoneSpacePannerProcessor& p)
-    : AudioProcessorEditor(&p), audioProcessor(p), hardwareLook(std::make_unique<HardwareLookAndFeel>())
+    : AudioProcessorEditor(&p), audioProcessor(p), hardwareLook(std::make_unique<HardwareLookAndFeel>()), scenePanel(p)
 {
     setLookAndFeel(hardwareLook.get());
     const auto folder = findArtwork();
@@ -171,11 +207,34 @@ GettoneSpacePannerEditor::GettoneSpacePannerEditor(GettoneSpacePannerProcessor& 
     themeAttachment = std::make_unique<juce::AudioProcessorValueTreeState::ComboBoxAttachment>(audioProcessor.treeState, "theme", themeSelector);
 
     roomModeSelector.addItem("Legacy", 1);
-    roomModeSelector.addItem("Neutral", 2);
-    roomModeSelector.setTooltip("Neutral passes the input through while all spatial controls are at their defaults.");
+    roomModeSelector.addItem("Modern", 2);
+    roomModeSelector.addItem("Neural", 3);
+    roomModeSelector.setTooltip("Modern is the corrected DSP. Neural simulates a room. Legacy recalls the original rendering.");
     addAndMakeVisible(roomModeSelector);
     roomModeAttachment = std::make_unique<juce::AudioProcessorValueTreeState::ComboBoxAttachment>(
         audioProcessor.treeState, "roomMode", roomModeSelector);
+
+    addChildComponent(scenePanel);
+    addAndMakeVisible(sceneButton);
+    sceneButton.onClick = [this]
+    {
+        showScene = !showScene;
+        scenePanel.refresh();
+        resized();
+        repaint();
+    };
+    const auto roomSlider = [this](juce::Slider& slider)
+    {
+        slider.setSliderStyle(juce::Slider::LinearHorizontal);
+        slider.setTextBoxStyle(juce::Slider::NoTextBox, false, 0, 0);
+        addChildComponent(slider);
+    };
+    roomSlider(absorptionSlider);
+    roomSlider(diffusionSlider);
+    absorptionSlider.setTitle("Absorption");
+    diffusionSlider.setTitle("Diffusion");
+    absorptionAttachment = std::make_unique<juce::AudioProcessorValueTreeState::SliderAttachment>(p.treeState, "absorb", absorptionSlider);
+    diffusionAttachment = std::make_unique<juce::AudioProcessorValueTreeState::SliderAttachment>(p.treeState, "diffusion", diffusionSlider);
 
     bypassButton.setButtonText("BYPASS");
     addAndMakeVisible(bypassButton);
@@ -287,6 +346,11 @@ void GettoneSpacePannerEditor::timerCallback()
     if (showing)
     {
         audioProcessor.scope.readLatest(scopeHistory);
+        if (showScene)
+            scenePanel.refresh();
+        const auto neural = audioProcessor.treeState.getRawParameterValue("roomMode")->load() > 1.5f;
+        absorptionSlider.setVisible(neural && isAdvancedPanelOpen);
+        diffusionSlider.setVisible(neural && isAdvancedPanelOpen);
         repaint();
     }
 }
@@ -344,6 +408,13 @@ void GettoneSpacePannerEditor::paint(juce::Graphics& g)
     erLevelSlider.setColour(juce::Slider::backgroundColourId, juce::Colours::black.withAlpha(0.8f));
     erLevelSlider.setColour(juce::Slider::thumbColourId, accentColor);
 
+    scenePanel.setTheme(accentColor, screenBgColor);
+    sceneButton.setColour(juce::TextButton::buttonColourId, accentColor.withAlpha(showScene ? .42f : .2f));
+    for (auto* slider : { &absorptionSlider, &diffusionSlider })
+    {
+        slider->setColour(juce::Slider::trackColourId, accentColor.withAlpha(.4f));
+        slider->setColour(juce::Slider::thumbColourId, accentColor);
+    }
     mixSlider.setColour(juce::Slider::trackColourId, accentColor.withAlpha(0.48f));
     mixSlider.setColour(juce::Slider::backgroundColourId, juce::Colours::black.withAlpha(0.55f));
     mixSlider.setColour(juce::Slider::thumbColourId, accentColor);
@@ -420,7 +491,7 @@ void GettoneSpacePannerEditor::paint(juce::Graphics& g)
     g.setFont(pixel(9.5f));
     g.drawFittedText("ALPHA", { 76, 49, 103, 12 }, juce::Justification::centredLeft, 1);
     g.setFont(pixel(11.0f));
-    g.drawText("MIX", juce::Rectangle<int>{ 230, 477, 33, 21 }, juce::Justification::centredLeft);
+    g.drawText("MIX", juce::Rectangle<int>{ 220, 477, 29, 21 }, juce::Justification::centredLeft);
 
     // PANNELLO METER SINISTRO
     float pL = audioProcessor.peakL.load();
@@ -555,6 +626,7 @@ void GettoneSpacePannerEditor::paint(juce::Graphics& g)
     bypassButton.setColour(juce::ToggleButton::tickColourId, accentColor);
 
     if (isAdvancedPanelOpen) {
+        const bool neuralRoom = audioProcessor.treeState.getRawParameterValue("roomMode")->load() > 1.5f;
         juce::Rectangle<float> advPlate(670.0f, 20.0f, 330.0f, 480.0f);
 
         juce::ColourGradient advGrad(plateHighlight, advPlate.getX(), advPlate.getY(), plateShadow, advPlate.getX(), advPlate.getBottom(), false);
@@ -568,6 +640,37 @@ void GettoneSpacePannerEditor::paint(juce::Graphics& g)
 
         drawScrew(advPlate.getRight() - margin - screwSize, advPlate.getY() + margin, 0.5f);
         drawScrew(advPlate.getRight() - margin - screwSize, advPlate.getBottom() - margin - screwSize, -0.2f);
+
+        if (neuralRoom)
+        {
+            g.setColour(accentColor);
+            g.setFont(pixel(21));
+            g.drawText("NEURAL ROOM", 696, 52, 270, 28, juce::Justification::centred);
+            g.setColour(ivory.withAlpha(.65f));
+            g.setFont(pixel(12));
+            g.drawText("SIZE · ABSORPTION · DIFFUSION", 696, 84, 270, 24, juce::Justification::centred);
+            const auto projected = [](float x, float y, float z) { return juce::Point<float>{ 835.0f + (x-y)*67, 262.0f + (x+y)*34-z*88 }; };
+            g.setColour(accentColor.withAlpha(.65f));
+            for (int x = 0; x < 2; ++x)
+                for (int y = 0; y < 2; ++y)
+                    for (int z = 0; z < 2; ++z)
+                    {
+                        const auto point = projected(x,y,z);
+                        if (x == 0) g.drawLine({ point, projected(1,y,z) }, 2);
+                        if (y == 0) g.drawLine({ point, projected(x,1,z) }, 2);
+                        if (z == 0) g.drawLine({ point, projected(x,y,1) }, 2);
+                    }
+            const auto position = projected(.5f * (1 + audioProcessor.treeState.getRawParameterValue("posX")->load()),
+                                            audioProcessor.treeState.getRawParameterValue("posZ")->load(),
+                                            .5f * (1 + audioProcessor.treeState.getRawParameterValue("posY")->load()));
+            g.setColour(accentColor);
+            g.fillEllipse(juce::Rectangle<float>(14,14).withCentre(position));
+            g.setColour(ivory);
+            g.drawText("ABSORB", 703, 349, 75, 20, juce::Justification::centredLeft);
+            g.drawText("DIFFUSION", 703, 381, 75, 20, juce::Justification::centredLeft);
+            g.drawText("EARLY REFLECTIONS MIX", 702, 430, 268, 19, juce::Justification::centred);
+            return;
+        }
 
         juce::Rectangle<float> advScreen(695.0f, 140.0f, 280.0f, 280.0f);
         g.setColour(juce::Colours::black.withAlpha(0.95f));
@@ -718,7 +821,13 @@ void GettoneSpacePannerEditor::resized()
     place(themeSelector, { 185, 35, 152, 24 });
     place(bypassButton, { 345, 35, 76, 24 });
     place(roomModeSelector, { 105, 477, 101, 21 });
-    place(mixSlider, { 264, 478, 299, 19 });
+    place(mixSlider, { 250, 478, 210, 19 });
+    place(sceneButton, { 472, 477, 98, 21 });
+    place(scenePanel, { 105, 75, 465, 400 });
+    place(absorptionSlider, { 790, 348, 180, 22 });
+    place(diffusionSlider, { 790, 380, 180, 22 });
+    scenePanel.setVisible(showScene);
+    sceneButton.setButtonText(showScene ? "SPATIAL PAD" : "GLOBAL MIX");
     place(presetSelector, { 429, 35, 118, 24 });
     place(savePresetButton, { 555, 35, 52, 24 });
 
@@ -758,7 +867,7 @@ void GettoneSpacePannerEditor::mouseDown(const juce::MouseEvent& e)
 
     const auto pos = e.position.transformedBy(layoutTransform().inverted());
     const juce::Rectangle<float> advScreen(695.0f, 140.0f, 280.0f, 280.0f);
-    if (isAdvancedPanelOpen && advScreen.contains(pos))
+    if (isAdvancedPanelOpen && audioProcessor.treeState.getRawParameterValue("roomMode")->load() < 1.5f && advScreen.contains(pos))
     {
         const float mouseX = (pos.x - advScreen.getX()) / advScreen.getWidth();
         const float mouseY = (pos.y - advScreen.getY()) / advScreen.getHeight();

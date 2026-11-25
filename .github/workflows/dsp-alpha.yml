@@ -8,6 +8,7 @@ on:
       - '.github/workflows/dsp-alpha.yml'
       - 'Source/**'
       - 'Tests/**'
+      - 'cmake/**'
       - 'windows/**'
       - 'macos/**'
 
@@ -124,10 +125,10 @@ jobs:
             cp macos/Resources/OFL.txt "$stage/PixelifySans-OFL.txt"
             cp -R build-alpha/SpacePanner_artefacts/Release/{VST3,AU,Standalone} "$stage/"
           fi
-          tar -czf Skeuomorphic_Space_Panner_2.0.1_Alpha_${{ matrix.platform }}.tar.gz -C "$stage" .
+          tar -czf Skeuomorphic_Space_Panner_2.1.0_Alpha_${{ matrix.platform }}.tar.gz -C "$stage" .
       - uses: actions/upload-artifact@v4
         if: ${{ !cancelled() && steps.archive.outcome == 'success' }}
         with:
-          name: Skeuomorphic-Space-Panner-2.0.1-Alpha-${{ matrix.platform }}
-          path: Skeuomorphic_Space_Panner_2.0.1_Alpha_${{ matrix.platform }}.tar.gz
+          name: Skeuomorphic-Space-Panner-2.1.0-Alpha-${{ matrix.platform }}
+          path: Skeuomorphic_Space_Panner_2.1.0_Alpha_${{ matrix.platform }}.tar.gz
           if-no-files-found: error

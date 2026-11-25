@@ -1,6 +1,7 @@
 #pragma once
 #include <JuceHeader.h>
 #include "DSP/StereoScope.h"
+#include "Neural/SpatialNetwork.h"
 
 class GettoneSpacePannerProcessor : public juce::AudioProcessor
 {
@@ -35,6 +36,11 @@ public:
 
     juce::AudioProcessorValueTreeState treeState;
 
+    void setSpatialGroup(juce::String);
+    juce::String getSpatialGroup() const;
+    juce::String getTrackName() const;
+    void updateTrackProperties(const TrackProperties&) override;
+    const std::shared_ptr<panner::SpatialTrack> spatialTrack;
     StereoScope scope;
     std::atomic<float> peakL{ 0.0f };
     std::atomic<float> peakR{ 0.0f };
@@ -44,12 +50,12 @@ private:
     {
         x, y, z, roomSize, width, inputGain, outputGain, bypass, send,
         node1X, node1Y, node2X, node2Y, node3X, node3Y, node4X, node4Y,
-        reflections, theme, roomMode, mix, parameterCount
+        reflections, theme, roomMode, mix, absorb, diffusion, parameterCount
     };
     static constexpr std::array<const char*, parameterCount> parameterIds{
         "posX", "posY", "posZ", "revSize", "width", "inGain", "outGain", "bypass", "sendMode",
         "node1X", "node1Y", "node2X", "node2Y", "node3X", "node3Y", "node4X", "node4Y",
-        "erLevel", "theme", "roomMode", "mix"
+        "erLevel", "theme", "roomMode", "mix", "absorb", "diffusion"
     };
     using ParameterValues = std::array<float, parameterCount>;
 
@@ -72,6 +78,13 @@ private:
     int transitionLength = 1;
     int transitionPosition = 0;
     int scopeStride = 2;
+    int samplesUntilRoomPrediction = 0;
+    std::array<float, 6> roomInputs{};
+    std::array<float, 10> roomPrediction{};
+    bool hasRoomPrediction = false;
+    std::array<juce::SmoothedValue<float>, 8> neuralTaps;
+    mutable juce::CriticalSection groupLock;
+    juce::String spatialGroup, trackName;
     float lastCutoff = -1.0f;
     bool hasRendered = false;
 

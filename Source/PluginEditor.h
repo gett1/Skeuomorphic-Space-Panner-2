@@ -1,6 +1,7 @@
 #pragma once
 #include <JuceHeader.h>
 #include "PluginProcessor.h"
+#include "Neural/ScenePanel.h"
 
 class GettoneSpacePannerEditor : public juce::AudioProcessorEditor, public juce::Timer
 {
@@ -33,7 +34,10 @@ private:
     juce::Slider outGainSlider;
     juce::Slider revSizeSlider;
     juce::Slider widthSlider;
-    juce::Slider mixSlider;
+    juce::Slider mixSlider, absorptionSlider, diffusionSlider;
+    juce::TextButton sceneButton{ "GLOBAL MIX" };
+    ScenePanel scenePanel;
+    bool showScene = false;
     juce::ToggleButton sendModeButton{ "SEND MODE" };
 
     std::unique_ptr<juce::AudioProcessorValueTreeState::ComboBoxAttachment> themeAttachment, roomModeAttachment;
@@ -44,7 +48,7 @@ private:
     std::unique_ptr<juce::AudioProcessorValueTreeState::SliderAttachment> widthAttachment;
     std::unique_ptr<juce::AudioProcessorValueTreeState::ButtonAttachment> sendModeAttachment;
 
-    std::unique_ptr<juce::AudioProcessorValueTreeState::SliderAttachment> mixAttachment;
+    std::unique_ptr<juce::AudioProcessorValueTreeState::SliderAttachment> mixAttachment, absorptionAttachment, diffusionAttachment;
 
     juce::File presetDir, alphaPresetDir;
     std::array<juce::Image, 5> backgrounds, centralArtwork;

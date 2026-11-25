@@ -144,7 +144,7 @@ void testState()
     set(restored, "roomMode", 1.0f);
     restored.restoreVersionedState(old.createCopy());
     require(restored.treeState.getRawParameterValue("roomMode")->load() == 0.0f, "V1 XML preset did not migrate to Legacy");
-    require(static_cast<int>(restored.copyVersionedState()["stateVersion"]) == 3, "Saved version is incorrect");
+    require(static_cast<int>(restored.copyVersionedState()["stateVersion"]) == 4, "Saved version is incorrect");
 }
 
 void testMix(double rate, int block)
@@ -200,6 +200,77 @@ void testMix(double rate, int block)
                 require(same(wet, dry), "Automation did not converge to the original full wet output");
         }
     }
+}
+
+void testSpatialSystem()
+{
+    GettoneSpacePannerProcessor controller, peer, isolated;
+    controller.setSpatialGroup("unit-test-scene-a");
+    peer.setSpatialGroup("unit-test-scene-a");
+    isolated.setSpatialGroup("unit-test-scene-b");
+    const auto linked = panner::SpatialNetwork::instance().peers("unit-test-scene-a");
+    require(linked.size() == 2, "Group isolation failed");
+    require(panner::SpatialNetwork::instance().peers("").empty(), "Unassigned processors were linked");
+
+    juce::AudioBuffer<float> buffer(2, 128);
+    juce::MidiBuffer midi;
+    for (auto* processor : { &controller, &peer, &isolated })
+        processor->prepareToPlay(48000, 128);
+
+    for (int block = 0; block < 100; ++block)
+    {
+        fillSignal(buffer, block * 128, .3f);
+        controller.processBlock(buffer, midi);
+        fillSignal(buffer, block * 128, .5f);
+        peer.processBlock(buffer, midi);
+    }
+    peer.spatialTrack->roleOverride = 3;
+    peer.spatialTrack->locked = true;
+    panner::SpatialNetwork::analyze(linked);
+    require(controller.spatialTrack->hasSuggestion && peer.spatialTrack->hasSuggestion, "Scene inference did not use the participating tracks");
+    require(!isolated.spatialTrack->hasSuggestion, "Scene crossed a group boundary");
+    panner::SpatialNetwork::apply(linked, 1.0f, false);
+    require(controller.treeState.getRawParameterValue("posZ")->load() > .01f, "Scene apply did not update depth");
+    require(peer.treeState.getRawParameterValue("posZ")->load() == 0.0f, "Locked track moved");
+    panner::SpatialNetwork::apply(linked, 0.0f, true);
+    require(controller.treeState.getRawParameterValue("posZ")->load() == 0.0f, "Scene undo did not restore depth");
+
+    const auto roomHard = panner::neural::room.infer({ .7f, .1f, .4f, .5f, .5f, .7f });
+    const auto roomSoft = panner::neural::room.infer({ .7f, .9f, .4f, .5f, .5f, .7f });
+    require(roomHard[0] > roomSoft[0], "Room absorption did not reduce predicted decay");
+
+    set(controller, "roomMode", 2.0f);
+    set(controller, "posZ", .6f);
+    set(peer, "roomMode", 2.0f);
+    set(peer, "posZ", .6f);
+    set(peer, "absorb", .95f);
+    juce::AudioBuffer<float> alternate(2, 128);
+    float delta = 0.0f;
+    for (int block = 0; block < 220; ++block)
+    {
+        buffer.clear();
+        if (block == 0) buffer.setSample(0, 0, .7f);
+        alternate.makeCopyOf(buffer);
+        controller.processBlock(buffer, midi);
+        peer.processBlock(alternate, midi);
+        for (int i = 0; i < buffer.getNumSamples(); ++i)
+        {
+            require(std::isfinite(buffer.getSample(0, i)), "Nonfinite neural room output");
+            if (block > 2)
+                delta += std::abs(buffer.getSample(0, i) - alternate.getSample(0, i));
+        }
+    }
+    require(delta > .005f, "Changing neural absorption did not affect the rendered response");
+
+    GettoneSpacePannerProcessor mono;
+    auto layout = mono.getBusesLayout();
+    layout.inputBuses.set(0, juce::AudioChannelSet::mono());
+    require(mono.setBusesLayout(layout), "Modern mono input layout was rejected");
+    mono.prepareToPlay(48000, 128);
+    buffer.clear();
+    buffer.setSample(0, 0, .5f);
+    mono.processBlock(buffer, midi);
+    require(buffer.getSample(1, 0) == .5f, "Neutral mono was not mapped to both outputs");
 }
 
 void testVariableBlocks()
@@ -386,6 +457,7 @@ int main(int argc, char** argv)
 #endif
         testState();
         testVariableBlocks();
+        testSpatialSystem();
         for (const auto rate : rates)
         {
             for (const auto block : blocks)

@@ -16,12 +16,12 @@ for f in files:
         errors.append("Risorsa mancante: " + f)
 
 src = (root.parent / "Source" / "PluginEditor.cpp").read_text(encoding="utf-8")
-cmake = (root / "CMakeLists.txt").read_text(encoding="utf-8")
+cmake = (root.parent / "cmake" / "Artwork.cmake").read_text(encoding="utf-8")
 for f in files:
     identifier = f.replace(".", "_")
     if f"BinaryData::{identifier}" not in src:
         errors.append("Immagine non referenziata in Editor: " + f)
-    if f"Resources/{f}" not in cmake:
+    if f not in cmake:
         errors.append("Immagine non inclusa nel CMake: " + f)
 for f in ("PluginProcessor.cpp", "PluginProcessor.h", "PluginEditor.cpp", "PluginEditor.h"):
     if not (root.parent / "Source" / f).is_file():

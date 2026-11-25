@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.22)
-project(SkeuomorphicSpacePanner VERSION 2.0.1 LANGUAGES C CXX)
+project(SkeuomorphicSpacePanner VERSION 2.1.0 LANGUAGES C CXX)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -41,21 +41,8 @@ target_compile_definitions(GettoneSpacePanner PUBLIC
     JUCE_VST3_CAN_REPLACE_VST2=0
 )
 
-set(TEXTURES "immagini Skeuomorphic Panner")
-juce_add_binary_data(PannerAssets SOURCES
-    Assets/PixelifySans.ttf
-    "${TEXTURES}/anime.png"
-    "${TEXTURES}/beach.png"
-    "${TEXTURES}/cosmic.png"
-    "${TEXTURES}/graffiti.png"
-    "${TEXTURES}/screw.png"
-    "${TEXTURES}/tree.png"
-    "${TEXTURES}/wood_beach.jpg"
-    "${TEXTURES}/wood_cosmic.jpg"
-    "${TEXTURES}/wood_garage.jpg"
-    "${TEXTURES}/wood_kawaii.jpg"
-    "${TEXTURES}/wood_vintage.jpg"
-)
+include(../cmake/Artwork.cmake)
+panner_artwork(PannerAssets "immagini Skeuomorphic Panner" Assets)
 
 juce_generate_juce_header(GettoneSpacePanner)
 target_link_libraries(GettoneSpacePanner PRIVATE

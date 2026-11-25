@@ -2,7 +2,7 @@ cmake_minimum_required(VERSION 3.22)
 
 # Porting macOS per Skeuomorphic Space Panner / gett1.
 # Il progetto precedente era JUCE/Projucer; questa e' una build CMake indipendente.
-project(SkeuomorphicSpacePanner VERSION 2.0.1 LANGUAGES C CXX)
+project(SkeuomorphicSpacePanner VERSION 2.1.0 LANGUAGES C CXX)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -50,22 +50,8 @@ target_sources(SpacePanner PRIVATE
     ../Source/PluginEditor.h
 )
 
-# Tutti gli asset sono dentro la build, SENZA riferimenti al vecchio disco Windows.
-juce_add_binary_data(SpacePannerAssets
-    SOURCES
-        Resources/PixelifySans.ttf
-        Resources/anime.png
-        Resources/beach.png
-        Resources/cosmic.png
-        Resources/graffiti.png
-        Resources/screw.png
-        Resources/tree.png
-        Resources/wood_beach.jpg
-        Resources/wood_cosmic.jpg
-        Resources/wood_garage.jpg
-        Resources/wood_kawaii.jpg
-        Resources/wood_vintage.jpg
-)
+include(../cmake/Artwork.cmake)
+panner_artwork(SpacePannerAssets Resources Resources)
 
 target_compile_definitions(SpacePanner PUBLIC
     JUCE_WEB_BROWSER=0

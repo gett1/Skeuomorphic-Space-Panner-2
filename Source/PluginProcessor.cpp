@@ -3,7 +3,8 @@
 
 GettoneSpacePannerProcessor::GettoneSpacePannerProcessor()
     : AudioProcessor(BusesProperties().withInput("Input", juce::AudioChannelSet::stereo(), true).withOutput("Output", juce::AudioChannelSet::stereo(), true)),
-    treeState(*this, nullptr, "PARAMETERS", createParameterLayout())
+    treeState(*this, nullptr, "PARAMETERS", createParameterLayout()),
+    spatialTrack(std::make_shared<panner::SpatialTrack>(treeState))
 {
     for (size_t i = 0; i < parameters.size(); ++i)
     {
@@ -14,7 +15,39 @@ GettoneSpacePannerProcessor::GettoneSpacePannerProcessor()
     lastParameters = defaults;
 }
 
-GettoneSpacePannerProcessor::~GettoneSpacePannerProcessor() {}
+GettoneSpacePannerProcessor::~GettoneSpacePannerProcessor()
+{
+    panner::SpatialNetwork::instance().join(spatialTrack, {});
+    std::lock_guard lock(spatialTrack->mutex);
+    spatialTrack->parameters = nullptr;
+}
+
+void GettoneSpacePannerProcessor::setSpatialGroup(juce::String group)
+{
+    const juce::ScopedLock lock(groupLock);
+    spatialGroup = group.trim().substring(0, 64);
+    panner::SpatialNetwork::instance().join(spatialTrack, spatialGroup);
+}
+
+juce::String GettoneSpacePannerProcessor::getSpatialGroup() const
+{
+    const juce::ScopedLock lock(groupLock);
+    return spatialGroup;
+}
+
+void GettoneSpacePannerProcessor::updateTrackProperties(const TrackProperties& properties)
+{
+    const juce::ScopedLock lock(groupLock);
+    trackName = properties.name.value_or(juce::String{});
+    std::lock_guard nodeLock(spatialTrack->mutex);
+    spatialTrack->name = trackName;
+}
+
+juce::String GettoneSpacePannerProcessor::getTrackName() const
+{
+    const juce::ScopedLock lock(groupLock);
+    return trackName;
+}
 
 const juce::String GettoneSpacePannerProcessor::getName() const { return "Skeuomorphic Space Panner Alpha"; }
 bool GettoneSpacePannerProcessor::acceptsMidi() const { return false; }
@@ -42,7 +75,8 @@ void GettoneSpacePannerProcessor::releaseResources() {}
 
 bool GettoneSpacePannerProcessor::isBusesLayoutSupported(const BusesLayout& layout) const
 {
-    return layout.getMainInputChannelSet() == juce::AudioChannelSet::stereo()
+    return (layout.getMainInputChannelSet() == juce::AudioChannelSet::stereo()
+            || layout.getMainInputChannelSet() == juce::AudioChannelSet::mono())
         && layout.getMainOutputChannelSet() == juce::AudioChannelSet::stereo();
 }
 bool GettoneSpacePannerProcessor::hasEditor() const { return true; }
@@ -51,7 +85,13 @@ juce::AudioProcessorEditor* GettoneSpacePannerProcessor::createEditor() { return
 juce::ValueTree GettoneSpacePannerProcessor::copyVersionedState()
 {
     auto state = treeState.copyState();
-    state.setProperty("stateVersion", 3, nullptr);
+    state.setProperty("stateVersion", 4, nullptr);
+    state.setProperty("spatialGroup", getSpatialGroup(), nullptr);
+    {
+        std::lock_guard lock(spatialTrack->mutex);
+        state.setProperty("role", spatialTrack->roleOverride, nullptr);
+        state.setProperty("trackLocked", spatialTrack->locked, nullptr);
+    }
     return state;
 }
 
@@ -72,6 +112,16 @@ void GettoneSpacePannerProcessor::restoreVersionedState(juce::ValueTree state)
     };
     addIfMissing("roomMode", 0.0f);
     addIfMissing("mix", 1.0f);
+    addIfMissing("absorb", 0.35f);
+    addIfMissing("diffusion", 0.5f);
+    if (state.hasProperty("spatialGroup"))
+        setSpatialGroup(state["spatialGroup"].toString());
+    {
+        std::lock_guard lock(spatialTrack->mutex);
+        spatialTrack->roleOverride = juce::jlimit(-1, 5, static_cast<int>(state.getProperty("role", -1)));
+        spatialTrack->locked = state.getProperty("trackLocked", false);
+        spatialTrack->hasUndo = spatialTrack->hasSuggestion = false;
+    }
 
     const juce::ScopedLock lock(stateRestoreLock);
     stateRestoreSequence.fetch_add(1);
@@ -119,7 +169,7 @@ juce::AudioProcessorValueTreeState::ParameterLayout GettoneSpacePannerProcessor:
     juce::StringArray themes = { "Kawaii", "Dark Garage", "Tropical Beach", "Cosmic Void", "Vintage Wood Room" };
     params.push_back(std::make_unique<juce::AudioParameterChoice>("theme", "Vibe", themes, 0));
     params.push_back(std::make_unique<juce::AudioParameterChoice>(
-        juce::ParameterID{ "roomMode", 2 }, "Room Mode", juce::StringArray{ "Legacy", "Neutral" }, 1));
+        juce::ParameterID{ "roomMode", 2 }, "Room Mode", juce::StringArray{ "Legacy", "Modern", "Neural" }, 1));
 
     params.push_back(std::make_unique<juce::AudioParameterFloat>(
         juce::ParameterID{ "mix", 3 }, "Mix", juce::NormalisableRange<float>{ 0.0f, 1.0f }, 1.0f,
@@ -127,6 +177,10 @@ juce::AudioProcessorValueTreeState::ParameterLayout GettoneSpacePannerProcessor:
             .withStringFromValueFunction([](float value, int) { return juce::String(juce::roundToInt(value * 100.0f)); })
             .withValueFromStringFunction([](const juce::String& text) { return text.getFloatValue() / 100.0f; })));
 
+    params.push_back(std::make_unique<juce::AudioParameterFloat>(juce::ParameterID{ "absorb", 4 },
+        "Absorption", 0.0f, 1.0f, 0.35f));
+    params.push_back(std::make_unique<juce::AudioParameterFloat>(juce::ParameterID{ "diffusion", 4 },
+        "Diffusion", 0.0f, 1.0f, 0.5f));
     return { params.begin(), params.end() };
 }
 
@@ -138,6 +192,11 @@ void GettoneSpacePannerProcessor::prepareToPlay(double sampleRate, int samplesPe
     mixDry.setSize(2, juce::jmax(1, samplesPerBlock));
     smoothedMix.reset(sampleRate, 0.020);
     hasRendered = false;
+    hasRoomPrediction = false;
+    samplesUntilRoomPrediction = 0;
+    for (auto& tap : neuralTaps)
+        tap.reset(sampleRate, 0.04);
+    spatialTrack->analysis.prepare(sampleRate);
     scopeStride = juce::jmax(1, juce::roundToInt(sampleRate / 24000.0));
     lastCutoff = -1.0f;
     juce::dsp::ProcessSpec spec;
@@ -205,11 +264,11 @@ bool GettoneSpacePannerProcessor::shouldProcess(const ParameterValues& values, b
     if (hostBypass || values[bypass] > 0.5f)
         return false;
 
-    if (values[roomMode] < 0.5f)
+    if (values[roomMode] < 0.5f || values[roomMode] > 1.5f)
         return true;
 
     for (size_t i = 0; i < roomMode; ++i)
-        if (i != bypass && values[i] != defaults[i])
+        if (i != bypass && i != theme && values[i] != defaults[i])
             return true;
 
     return false;
@@ -233,6 +292,10 @@ void GettoneSpacePannerProcessor::render(juce::AudioBuffer<float>& buffer, bool 
 
     juce::ScopedNoDenormals noDenormals;
     const auto values = readParameters();
+    const auto inputs = getTotalNumInputChannels();
+    spatialTrack->analysis.push(buffer, inputs);
+    if (inputs == 1)
+        buffer.copyFrom(1, 0, buffer, 0, 0, samples);
     const bool processing = shouldProcess(values, hostBypass);
     if (!hasRendered)
     {
@@ -342,7 +405,32 @@ void GettoneSpacePannerProcessor::processEffect(juce::AudioBuffer<float>& buffer
     const float stereoWidth = values[width];
     const int themeChoice = static_cast<int>(values[theme]);
     const bool sendMode = values[send] > 0.5f;
+    const bool legacy = values[roomMode] < .5f;
+    const bool neural = values[roomMode] > 1.5f;
     const float erLevel = values[reflections];
+    if (neural)
+    {
+        samplesUntilRoomPrediction = juce::jmax(0, samplesUntilRoomPrediction - buffer.getNumSamples());
+        const std::array input{ (sizeMultiplier - .1f) / 1.4f, values[absorb], values[diffusion],
+                                .5f * (1 + values[x]), .5f * (1 + values[y]), values[z] };
+        if (!hasRoomPrediction || (input != roomInputs && samplesUntilRoomPrediction <= 0))
+        {
+            roomInputs = input;
+            roomPrediction = panner::neural::room.infer(input);
+            samplesUntilRoomPrediction = static_cast<int>(currentSampleRate / 50.0f);
+            for (size_t i = 0; i < neuralTaps.size(); ++i)
+            {
+                const auto target = roomPrediction[i + 2];
+                if (hasRoomPrediction)
+                    neuralTaps[i].setTargetValue(target);
+                else
+                    neuralTaps[i].setCurrentAndTargetValue(target);
+            }
+            hasRoomPrediction = true;
+        }
+    }
+    else
+        hasRoomPrediction = false;
 
     smoothedX.setTargetValue(values[x]);
     smoothedY.setTargetValue(values[y]);
@@ -363,22 +451,37 @@ void GettoneSpacePannerProcessor::processEffect(juce::AudioBuffer<float>& buffer
     struct Reflection { float delay, gain; };
     std::array<Reflection, 4> taps{};
     float shelfGain = 0.0f;
-    float panL = 0.0f, panR = 0.0f;
+    float panL = 0.0f, panR = 0.0f, crossL = 0.0f, crossR = 0.0f;
     auto updateGeometry = [&]
     {
         const float curX = smoothedX.getNextValue();
         const float curY = smoothedY.getNextValue();
         const float normSrcX = (curX + 1.0f) * 0.5f;
-        const float normSrcY = (curY + 1.0f) * 0.5f;
-        shelfGain = juce::jmap(curY, -1.0f, 1.0f, -1.0f, 1.5f);
+        const float normSrcY = (1.0f + (legacy ? curY : -curY)) * 0.5f;
+        shelfGain = legacy ? juce::jmap(curY, -1.0f, 1.0f, -1.0f, 1.5f) : curY * .65f;
         const float theta = juce::MathConstants<float>::pi / 4.0f * (curX + 1.0f);
-        panL = juce::dsp::FastMathApproximations::cos(theta);
-        panR = juce::dsp::FastMathApproximations::sin(theta);
+        if (legacy)
+        {
+            panL = juce::dsp::FastMathApproximations::cos(theta);
+            panR = juce::dsp::FastMathApproximations::sin(theta);
+        }
+        else
+        {
+            const auto angle = std::abs(curX) * juce::MathConstants<float>::halfPi;
+            const auto attenuated = juce::dsp::FastMathApproximations::cos(angle);
+            const auto transfer = juce::dsp::FastMathApproximations::sin(angle) * .70710678f;
+            panL = curX > 0.0f ? attenuated : 1.0f;
+            panR = curX < 0.0f ? attenuated : 1.0f;
+            crossL = curX < 0.0f ? transfer : 0.0f;
+            crossR = curX > 0.0f ? transfer : 0.0f;
+        }
 
         for (size_t i = 0; i < taps.size(); ++i)
         {
             const float dx = normSrcX - smoothedNodes[i * 2].getNextValue();
             const float dy = normSrcY - smoothedNodes[i * 2 + 1].getNextValue();
+            if (neural)
+                continue;
             const float distance = std::sqrt(dx * dx + dy * dy);
             const float delayMs = 5.0f + (distance * 40.0f) * sizeMultiplier;
             taps[i] = { delayMs * samplesPerMs,
@@ -402,15 +505,22 @@ void GettoneSpacePannerProcessor::processEffect(juce::AudioBuffer<float>& buffer
         const float rDry = right[sample];
         const float lHigh = elevationFilters[0].processSample(1, lDry);
         const float rHigh = elevationFilters[1].processSample(1, rDry);
-        const float pannedL = (lDry + lHigh * shelfGain) * panL;
-        const float pannedR = (rDry + rHigh * shelfGain) * panR;
+        const float sourceL = lDry + lHigh * shelfGain;
+        const float sourceR = rDry + rHigh * shelfGain;
+        const float pannedL = sourceL * panL + (legacy ? 0.0f : sourceR * crossL);
+        const float pannedR = sourceR * panR + (legacy ? 0.0f : sourceL * crossR);
         delayL[delayWritePosition] = pannedL;
         delayR[delayWritePosition] = pannedR;
 
         float earlyRefL = 0.0f;
         float earlyRefR = 0.0f;
-        for (const auto& tap : taps)
+        const float earlyLevel = legacy || neural ? erLevel : erLevel * (.18f + .82f * currentZ);
+        for (size_t i = 0; i < taps.size(); ++i)
         {
+            auto tap = taps[i];
+            if (neural)
+                tap = { (2.0f + 65.0f * neuralTaps[2*i].getNextValue()) * samplesPerMs,
+                        neuralTaps[2*i + 1].getNextValue() };
             float readPosition = delayWritePosition - tap.delay;
             if (readPosition < 0.0f)
                 readPosition += delaySize;
@@ -421,8 +531,8 @@ void GettoneSpacePannerProcessor::processEffect(juce::AudioBuffer<float>& buffer
             const float tapL = delayL[first] + fraction * (delayL[second] - delayL[first]);
             const float tapR = delayR[first] + fraction * (delayR[second] - delayR[first]);
 
-            earlyRefL += tapL * tap.gain * 0.25f * erLevel;
-            earlyRefR += tapR * tap.gain * 0.25f * erLevel;
+            earlyRefL += tapL * tap.gain * 0.25f * earlyLevel;
+            earlyRefR += tapR * tap.gain * 0.25f * earlyLevel;
         }
 
         left[sample] = pannedL + earlyRefL;
@@ -443,8 +553,25 @@ void GettoneSpacePannerProcessor::processEffect(juce::AudioBuffer<float>& buffer
     revParams.damping = damping;
     revParams.width = stereoWidth;
 
-    revParams.dryLevel = sendMode ? 0.0f : (1.0f - (std::pow(currentZ, 0.8f) * 0.85f));
-    revParams.wetLevel = std::pow(currentZ, 1.2f) * 0.85f;
+    if (legacy)
+    {
+        revParams.dryLevel = sendMode ? 0.0f : 1.0f - std::pow(currentZ, .8f) * .85f;
+        revParams.wetLevel = std::pow(currentZ, 1.2f) * .85f;
+    }
+    else
+    {
+        revParams.dryLevel = sendMode ? 0.0f : .5f * (1.0f - .34f * currentZ);
+        revParams.wetLevel = neural ? (.28f + .72f * currentZ) * roomPrediction[1] : currentZ * .58f;
+    }
+    if (neural)
+    {
+        // Convert measured decay proxy to the feedback/room size expected by JUCE.
+        const auto rt60 = juce::jmax(.15f, roomPrediction[0] * 4.0f);
+        const auto feedback = std::exp(-6.907755f * (1400.0f / 44100.0f) / rt60);
+        revParams.roomSize = juce::jlimit(0.0f, 1.0f, (feedback - .7f) / .28f);
+        revParams.damping = values[absorb];
+        revParams.width *= .45f + .55f * values[diffusion];
+    }
     fxChain.template get<1>().setParameters(revParams);
 
     // 6. LOWPASS ATMOSFERICO
