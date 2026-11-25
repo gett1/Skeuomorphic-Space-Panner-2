@@ -70,3 +70,15 @@ Tempi mediani in millisecondi sulla stessa macchina Linux (Intel Xeon Platinum 8
 | 32 | 1085,180 | 880,603 | 1097,000 | 970,558 |
 
 I risultati riguardano il processore DSP in sequenza. Restano da misurare il costo dell'editor aperto, la RAM e le prestazioni con il routing multithread di una DAW. Le build target Windows e macOS richiedono i runner nativi del workflow Alpha.
+
+## Risultati nativi Windows e macOS
+
+| Piattaforma | Build | Verifiche superate |
+| --- | --- | --- |
+| Windows x64 | VST3 | Suite DSP con confronto bit per bit, pluginval 5 |
+| macOS Apple Silicon | VST3, AU, Standalone | Suite DSP con confronto bit per bit, pluginval 5 per VST3, auval per AU |
+| macOS Intel | VST3, AU, Standalone | Suite DSP con confronto bit per bit, pluginval 5 per VST3, auval per AU |
+
+Il [run nativo](https://github.com/gett1/Skeuomorphic-Space-Panner-2/actions/runs/45582023071) contiene log e bundle di test, senza installer. I bundle macOS hanno firma ad hoc e non sono notarizzati. Il controllo AU copia il bundle nella directory di sistema del runner, riavvia la registrazione dei componenti e invoca auval. La prima esecuzione aveva compilato entrambi i target Mac e superato pluginval, ma l'AU appena copiato non era stato registrato.
+
+Su Linux, Valgrind Memcheck 3.24 ha riportato **0 errori e 0 byte ancora allocati** dopo l'intera suite DSP. I controlli in Ableton Live e GarageBand, in particolare automazione registrata, freeze e riproduzione della coda dopo lo stop, restano da eseguire nelle DAW.
