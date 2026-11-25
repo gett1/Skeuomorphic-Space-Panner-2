@@ -15,7 +15,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: dsp-alpha-${{ github.ref }}
+  group: dsp-alpha-${{ github.sha }}
   cancel-in-progress: true
 
 jobs:
@@ -67,6 +67,7 @@ jobs:
             --target SpacePanner_VST3 SpacePanner_AU SpacePanner_Standalone PannerDspTests
 
       - name: Run processor regressions
+        id: regression
         run: ctest --test-dir build-alpha -C Release --output-on-failure
 
       - name: Validate Windows VST3
@@ -88,11 +89,28 @@ jobs:
           ditto -x -k "$RUNNER_TEMP/pluginval.zip" "$RUNNER_TEMP/pluginval"
           validator=$(find "$RUNNER_TEMP/pluginval" -type f -path '*/Contents/MacOS/pluginval' -print -quit)
           "$validator" --strictness-level 5 --skip-gui-tests --validate "$release/VST3/Skeuomorphic Space Panner.vst3"
-          mkdir -p "$HOME/Library/Audio/Plug-Ins/Components"
-          ditto "$release/AU/Skeuomorphic Space Panner.component" "$HOME/Library/Audio/Plug-Ins/Components/Skeuomorphic Space Panner.component"
+          au="$release/AU/Skeuomorphic Space Panner.component"
+          /usr/libexec/PlistBuddy -c 'Print :AudioComponents' "$au/Contents/Info.plist"
+          for bundle in "$au" "$release/VST3/Skeuomorphic Space Panner.vst3" "$release/Standalone/Skeuomorphic Space Panner.app"; do
+            codesign --force --sign - --timestamp=none "$bundle"
+            codesign --verify --deep --strict "$bundle"
+          done
+          sudo mkdir -p /Library/Audio/Plug-Ins/Components
+          sudo ditto "$au" "/Library/Audio/Plug-Ins/Components/Skeuomorphic Space Panner.component"
+          killall AudioComponentRegistrar 2>/dev/null || true
+          for attempt in 1 2 3 4 5; do
+            auval -a > au-list.txt
+            if grep -Eq 'aufx[[:space:]]+Spnr[[:space:]]+Gett' au-list.txt; then
+              break
+            fi
+            sleep 2
+          done
+          grep -E 'Spnr|Gett' au-list.txt || true
           auval -v aufx Spnr Gett
 
       - name: Archive test bundles with permissions
+        id: archive
+        if: ${{ !cancelled() && steps.regression.outcome == 'success' }}
         shell: bash
         run: |
           set -euo pipefail
@@ -108,6 +126,7 @@ jobs:
           fi
           tar -czf Skeuomorphic_Space_Panner_2.0_Alpha_${{ matrix.platform }}.tar.gz -C "$stage" .
       - uses: actions/upload-artifact@v4
+        if: ${{ !cancelled() && steps.archive.outcome == 'success' }}
         with:
           name: Skeuomorphic-Space-Panner-2.0-Alpha-${{ matrix.platform }}
           path: Skeuomorphic_Space_Panner_2.0_Alpha_${{ matrix.platform }}.tar.gz
