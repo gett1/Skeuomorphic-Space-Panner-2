@@ -1,9 +1,36 @@
 """Deterministic synthetic baselines. No external audio or pretrained dependencies."""
 from pathlib import Path
+import argparse
 import json
 import numpy as np
 
+parser = argparse.ArgumentParser(description=__doc__)
+for model in ("room", "instrument", "scene"):
+    parser.add_argument("--" + model, type=Path, help="NPZ with x, y and group arrays")
+parser.add_argument("--output", type=Path, default=Path(__file__).resolve().parent.parent)
+args = parser.parse_args()
+
 rng = np.random.default_rng(20261125)
+
+def use_data(name, shape, synthetic):
+    path = getattr(args, name)
+    if path is None:
+        return synthetic()
+    with np.load(path, allow_pickle=False) as data:
+        x, y, group = data["x"], data["y"], data["group"]
+    if x.ndim != 2 or y.ndim != 2 or (x.shape[1], y.shape[1]) != shape:
+        parser.error(f"{name}: expected {shape[0]} input and {shape[1]} target columns")
+    if len(x) != len(y) or group.shape != (len(x),):
+        parser.error(f"{name}: group must identify each row")
+    if not all(np.isfinite(a).all() and (a >= 0).all() and (a <= 1).all() for a in (x,y)):
+        parser.error(f"{name}: expected finite normalized values in [0, 1]")
+    if name == "instrument" and not np.allclose(y.sum(axis=1), 1):
+        parser.error("instrument: target rows must sum to one")
+    groups = rng.permutation(np.unique(group))
+    if len(groups) < 5:
+        parser.error(f"{name}: at least five independent groups are required")
+    test = np.isin(group, groups[:max(1, len(groups)//5)])
+    return x[~test], y[~test], x[test], y[test]
 sig = lambda x: 1 / (1 + np.exp(-np.clip(x, -30, 30)))
 
 def fit(name, x, y, xt, yt, width, softmax=False):
@@ -59,7 +86,7 @@ def rooms(n):
         taps.extend((delay/.065,gain))
     late = .07+.5*rt60/(.8+rt60)+.18*diffusion
     return x, np.clip(np.column_stack((rt60/4, late, *taps)), .005, .995)
-fit('room', *rooms(20000), *rooms(2500), 32)
+fit('room', *use_data('room', (6, 10), lambda: (*rooms(20000), *rooms(2500))), 32)
 
 def instruments(n):
     # Random frequency/amplitude/envelope variations on stereo synthetic stems.
@@ -83,7 +110,7 @@ def instruments(n):
                   np.mean((audio[:,1:]>0)!=(audio[:,:-1]>0),axis=1),
                   np.sqrt(np.mean((l-r)**2,axis=1)/(4*power+1e-8))],1)
     return np.clip(x,0,1), np.eye(6)[labels]
-fit('instrument', *instruments(14000), *instruments(2200), 24, True)
+fit('instrument', *use_data('instrument', (5, 6), lambda: (*instruments(14000), *instruments(2200))), 24, True)
 
 def scenes(n):
     rows, targets = [], []
@@ -104,8 +131,10 @@ def scenes(n):
             rows.append(np.r_[np.eye(6)[role],power[i],width[i],seed[i],context])
             targets.append([.5+.5*pan,.43+.13*(role==2)-.13*(role==3),depth,room])
     return np.array(rows),np.array(targets)
-fit('scene', *scenes(5000), *scenes(620), 28)
-root=Path(__file__).resolve().parent.parent
+fit('scene', *use_data('scene', (17, 4), lambda: (*scenes(5000), *scenes(620))), 28)
+root=args.output
+(root/'Source/Neural').mkdir(parents=True, exist_ok=True)
+(root/'Training').mkdir(parents=True, exist_ok=True)
 (root/'Source/Neural/Weights.h').write_text('#pragma once\n#include "Dense.h"\n\nnamespace panner::neural {\n'+'\n\n'.join(models)+'\n}\n')
 (root/'Training/metrics.json').write_text(json.dumps(metrics,indent=2)+'\n')
 print(json.dumps(metrics,indent=2))

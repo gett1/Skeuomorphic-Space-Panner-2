@@ -19,3 +19,13 @@ OPENBLAS_NUM_THREADS=1 python Training/train.py
 ```
 
 Richiede NumPy. Seed fisso. Esporta l'header C++ e il JSON delle metriche su set indipendenti. La rete acustica scende a circa 63 ms di MAE sul target RT60 sintetico, e circa 1,8–2,3 ms sui quattro ritardi. La classificazione misura l'88,5% sulle forme d'onda sintetiche, dopo separazione delle serie simulate. Questi numeri misurano il simulatore. I modelli non sono ancora addestrati o validati con sale registrate o decisioni di fonici.
+
+Per usare dati propri, il trainer accetta `--room`, `--instrument` e `--scene` con file NPZ contenenti matrici normalizzate `x`, `y` e un vettore `group`. Il gruppo identifica la stanza, la registrazione sorgente o il brano, rispettivamente. Il trainer separa i gruppi prima dell'addestramento. Le colonne e la normalizzazione sono quelle descritte nelle funzioni `rooms`, `instruments` e `scenes`. `--output /percorso` consente di confrontare pesi e metriche senza modificare il progetto.
+
+Esempi di risorse da valutare per una fase successiva: [BUT ReverbDB](https://ieeexplore.ieee.org/abstract/document/8717722) per RIR misurate, [Slakh](https://www.slakh.com/) per stem e classi strumentali, e [Learning Neural Acoustic Fields](https://papers.neurips.cc/paper_files/paper/2022/hash/151f4dfc71f025ae387e2d7a4ea1639b-Abstract-Conference.html) per la generazione di risposte spaziali. Nessuna di queste risorse è stata usata per addestrare i pesi distribuiti qui.
+
+Il benchmark DSP Legacy a 48 kHz, 128 campioni e 32 istanze su Linux ha misurato 781 ms rispetto a 1000 ms con controlli fermi e 928 ms rispetto a 1064 ms con automazione. I tempi si riferiscono allo stesso carico di elaborazione del benchmark 1.1.0 e non misurano il costo dei modelli Neural e Global Mix.
+
+Con lo stesso segnale e 32 istanze in un secondo benchmark, Modern ha misurato **793 ms contro 1094 ms** con parametri fermi e **981 ms contro 1064 ms** con automazione. Neural Room ha misurato rispettivamente **953 ms** e **993 ms**. In questa prova non erano attivi il visualizzatore e il gruppo di analisi. I tempi riguardano il PC di build Linux e non stimano la CPU di Ableton su un altro computer.
+
+I pacchetti di prova personalizzati includono le grafiche. Windows carica i byte incorporati nel modulo VST3, Linux incorpora le immagini con JUCE BinaryData e macOS le firma come risorse del bundle. Le immagini originali restano fuori dalla repository pubblica. In compilazioni proprie impostare `GETT1_ARTWORK_PATH` sulla cartella di immagini autorizzate. Il VST3 Alpha mantiene il codice della 2.0.1 e resta una voce distinta dalla 1.1.0.
