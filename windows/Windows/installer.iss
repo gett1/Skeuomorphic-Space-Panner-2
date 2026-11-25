@@ -1,5 +1,5 @@
 #ifndef Version
-  #define Version "2.1.0-alpha"
+  #define Version "2.1.1-alpha"
 #endif
 #ifndef BundleDir
   #error BundleDir is required
@@ -9,10 +9,10 @@
 #endif
 
 [Setup]
-AppName=Skeuomorphic Space Panner Alpha
+AppName=Skeuomorphic Space Panner 2.1.1 Alpha
 AppVersion={#Version}
 AppPublisher=gett1
-DefaultDirName={commoncf64}\VST3\Skeuomorphic Space Panner Alpha
+DefaultDirName={commoncf64}\VST3\Skeuomorphic Space Panner 2.1.1 Alpha
 DisableProgramGroupPage=yes
 PrivilegesRequired=admin
 ArchitecturesAllowed=x64compatible
@@ -28,11 +28,11 @@ Name: "italian"; MessagesFile: "compiler:Languages\Italian.isl"
 Name: "english"; MessagesFile: "compiler:Default.isl"
 
 [Files]
-Source: "{#BundleDir}\*"; DestDir: "{app}\Skeuomorphic Space Panner Alpha.vst3"; Flags: ignoreversion recursesubdirs createallsubdirs
-Source: "..\Manuali\Manuale_Utente.pdf"; DestDir: "{commondocs}\Gettone\Skeuomorphic Space Panner Alpha"; DestName: "manuale_space_panner.pdf"; Flags: ignoreversion
-Source: "..\Manuali\Installazione_Windows.pdf"; DestDir: "{commondocs}\Gettone\Skeuomorphic Space Panner Alpha"; Flags: ignoreversion
-Source: "..\LEGGIMI.txt"; DestDir: "{commondocs}\Gettone\Skeuomorphic Space Panner Alpha"; DestName: "README.txt"; Flags: ignoreversion
-Source: "..\Assets\OFL.txt"; DestDir: "{commondocs}\Gettone\Skeuomorphic Space Panner Alpha"; DestName: "PixelifySans-OFL.txt"; Flags: ignoreversion
+Source: "{#BundleDir}\*"; DestDir: "{app}\Skeuomorphic Space Panner 2.1.1 Alpha.vst3"; Flags: ignoreversion recursesubdirs createallsubdirs
+Source: "..\Manuali\Manuale_Utente.pdf"; DestDir: "{commondocs}\Gettone\Skeuomorphic Space Panner 2.1.1 Alpha"; DestName: "manuale_space_panner.pdf"; Flags: ignoreversion
+Source: "..\Manuali\Installazione_Windows.pdf"; DestDir: "{commondocs}\Gettone\Skeuomorphic Space Panner 2.1.1 Alpha"; Flags: ignoreversion
+Source: "..\LEGGIMI.txt"; DestDir: "{commondocs}\Gettone\Skeuomorphic Space Panner 2.1.1 Alpha"; DestName: "README.txt"; Flags: ignoreversion
+Source: "..\Assets\OFL.txt"; DestDir: "{commondocs}\Gettone\Skeuomorphic Space Panner 2.1.1 Alpha"; DestName: "PixelifySans-OFL.txt"; Flags: ignoreversion
 
 [Icons]
-Name: "{commonprograms}\Skeuomorphic Space Panner Alpha Manual"; Filename: "{commondocs}\Gettone\Skeuomorphic Space Panner Alpha\manuale_space_panner.pdf"
+Name: "{commonprograms}\Skeuomorphic Space Panner 2.1.1 Alpha Manual"; Filename: "{commondocs}\Gettone\Skeuomorphic Space Panner 2.1.1 Alpha\manuale_space_panner.pdf"

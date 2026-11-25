@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.22)
-project(SkeuomorphicSpacePanner VERSION 2.1.0 LANGUAGES C CXX)
+project(SkeuomorphicSpacePanner VERSION 2.1.1 LANGUAGES C CXX)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -13,11 +13,11 @@ add_subdirectory("${GETT1_JUCE_PATH}" juce)
 
 juce_add_plugin(GettoneSpacePanner
     COMPANY_NAME "gett1"
-    BUNDLE_ID "com.gett1.skeuomorphicspacepanner.alpha"
+    BUNDLE_ID "com.gett1.skeuomorphicspacepanner.alpha211"
     PLUGIN_MANUFACTURER_CODE Manu
-    PLUGIN_CODE SpAw
-    PRODUCT_NAME "Skeuomorphic Space Panner Alpha"
-    PLUGIN_NAME "Skeuomorphic Space Panner Alpha"
+    PLUGIN_CODE SpAx
+    PRODUCT_NAME "Skeuomorphic Space Panner 2.1.1 Alpha"
+    PLUGIN_NAME "Skeuomorphic Space Panner 2.1.1 Alpha"
     DESCRIPTION "GettoneSpacePanner_Hardware"
     FORMATS VST3
     VST3_CATEGORIES Fx Spatial Tools

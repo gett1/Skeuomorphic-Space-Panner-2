@@ -64,12 +64,12 @@ juce::Image loadPackedArtwork(const char* filename)
 
 juce::Image loadArtwork(const juce::File& folder, const char* filename, const char* fallback, int fallbackSize)
 {
+    if (auto packed = loadPackedArtwork(filename); packed.isValid())
+        return packed;
+
     if (folder.isDirectory())
         if (auto image = juce::ImageCache::getFromFile(folder.getChildFile(filename)); image.isValid())
             return image;
-
-    if (auto packed = loadPackedArtwork(filename); packed.isValid())
-        return packed;
 
     return juce::ImageCache::getFromMemory(fallback, fallbackSize);
 }
@@ -489,7 +489,7 @@ void GettoneSpacePannerEditor::paint(juce::Graphics& g)
     g.setFont(pixel(16.0f));
     g.drawFittedText("SPACE PANNER", { 76, 29, 103, 24 }, juce::Justification::centredLeft, 1);
     g.setFont(pixel(9.5f));
-    g.drawFittedText("ALPHA", { 76, 49, 103, 12 }, juce::Justification::centredLeft, 1);
+    g.drawFittedText("ALPHA " JucePlugin_VersionString, { 76, 49, 103, 12 }, juce::Justification::centredLeft, 1);
     g.setFont(pixel(11.0f));
     g.drawText("MIX", juce::Rectangle<int>{ 220, 477, 29, 21 }, juce::Justification::centredLeft);
 

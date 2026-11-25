@@ -49,7 +49,7 @@ juce::String GettoneSpacePannerProcessor::getTrackName() const
     return trackName;
 }
 
-const juce::String GettoneSpacePannerProcessor::getName() const { return "Skeuomorphic Space Panner Alpha"; }
+const juce::String GettoneSpacePannerProcessor::getName() const { return JucePlugin_Name; }
 bool GettoneSpacePannerProcessor::acceptsMidi() const { return false; }
 bool GettoneSpacePannerProcessor::producesMidi() const { return false; }
 bool GettoneSpacePannerProcessor::isMidiEffect() const { return false; }

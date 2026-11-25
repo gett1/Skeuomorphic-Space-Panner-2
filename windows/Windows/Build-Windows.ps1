@@ -10,8 +10,8 @@ param(
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 $root = Split-Path -Parent $PSScriptRoot
-$version = '2.1.0-alpha'
-$bundleName = 'Skeuomorphic Space Panner Alpha.vst3'
+$version = '2.1.1-alpha'
+$bundleName = 'Skeuomorphic Space Panner 2.1.1 Alpha.vst3'
 $cmake = (Get-Command cmake -CommandType Application).Source
 
 function Invoke-BuildTool {

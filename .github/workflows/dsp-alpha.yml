@@ -10,7 +10,6 @@ on:
       - 'Tests/**'
       - 'cmake/**'
       - 'windows/**'
-      - 'macos/**'
 
 permissions:
   contents: read
@@ -21,21 +20,9 @@ concurrency:
 
 jobs:
   native:
-    name: ${{ matrix.platform }}
-    runs-on: ${{ matrix.runner }}
+    name: Windows-x64
+    runs-on: windows-2025-vs2026
     timeout-minutes: 45
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - platform: Windows-x64
-            runner: windows-2025-vs2026
-          - platform: macOS-arm64
-            runner: macos-15
-            arch: arm64
-          - platform: macOS-x86_64
-            runner: macos-15-intel
-            arch: x86_64
     steps:
       - uses: actions/checkout@v4
         with:
@@ -46,7 +33,6 @@ jobs:
         run: git worktree add --detach "$RUNNER_TEMP/panner-legacy" 3cc948da50ad7abcc44b7d66bf2168bb518113af
 
       - name: Compile Windows VST3 and DSP tests
-        if: runner.os == 'Windows'
         shell: pwsh
         run: |
           git clone --depth 1 --branch 8.0.16-security https://github.com/juce-framework/JUCE.git "$env:RUNNER_TEMP/JUCE"
@@ -55,80 +41,34 @@ jobs:
             "-DGETT1_LEGACY_SOURCE_DIR=$env:RUNNER_TEMP/panner-legacy" -DGETT1_BUILD_DSP_TESTS=ON
           cmake --build build-alpha --config Release --parallel 2 --target GettoneSpacePanner_VST3 PannerDspTests
 
-      - name: Compile macOS VST3, AU, Standalone and DSP tests
-        if: runner.os == 'macOS'
-        shell: bash
-        run: |
-          python3 macos/scripts/verifica_risorse.py
-          cmake -S macos -B build-alpha -G Xcode \
-            -DCMAKE_OSX_ARCHITECTURES="${{ matrix.arch }}" -DCMAKE_OSX_DEPLOYMENT_TARGET=12.0 \
-            -DCMAKE_XCODE_ATTRIBUTE_CODE_SIGNING_ALLOWED=NO \
-            -DGETT1_LEGACY_SOURCE_DIR="$RUNNER_TEMP/panner-legacy" -DGETT1_BUILD_DSP_TESTS=ON
-          cmake --build build-alpha --config Release --parallel 2 \
-            --target SpacePanner_VST3 SpacePanner_AU SpacePanner_Standalone PannerDspTests
-
       - name: Run processor regressions
         id: regression
         run: ctest --test-dir build-alpha -C Release --output-on-failure
 
       - name: Validate Windows VST3
-        if: runner.os == 'Windows'
         shell: pwsh
         run: |
           Invoke-WebRequest "https://github.com/Tracktion/pluginval/releases/download/v1.0.4/pluginval_Windows.zip" -OutFile "$env:RUNNER_TEMP/pluginval.zip"
           Expand-Archive "$env:RUNNER_TEMP/pluginval.zip" "$env:RUNNER_TEMP/pluginval"
           $validator = (Get-ChildItem "$env:RUNNER_TEMP/pluginval" -Filter "pluginval.exe" -Recurse | Select-Object -First 1).FullName
-          & $validator --strictness-level 5 --skip-gui-tests --validate "build-alpha/GettoneSpacePanner_artefacts/Release/VST3/Skeuomorphic Space Panner Alpha.vst3"
-
-      - name: Validate macOS VST3 and AU
-        if: runner.os == 'macOS'
-        shell: bash
-        run: |
-          set -euo pipefail
-          release=build-alpha/SpacePanner_artefacts/Release
-          curl --fail --location --retry 3 https://github.com/Tracktion/pluginval/releases/download/v1.0.4/pluginval_macOS.zip -o "$RUNNER_TEMP/pluginval.zip"
-          ditto -x -k "$RUNNER_TEMP/pluginval.zip" "$RUNNER_TEMP/pluginval"
-          validator=$(find "$RUNNER_TEMP/pluginval" -type f -path '*/Contents/MacOS/pluginval' -print -quit)
-          "$validator" --strictness-level 5 --skip-gui-tests --validate "$release/VST3/Skeuomorphic Space Panner Alpha.vst3"
-          au="$release/AU/Skeuomorphic Space Panner Alpha.component"
-          /usr/libexec/PlistBuddy -c 'Print :AudioComponents' "$au/Contents/Info.plist"
-          for bundle in "$au" "$release/VST3/Skeuomorphic Space Panner Alpha.vst3" "$release/Standalone/Skeuomorphic Space Panner Alpha.app"; do
-            codesign --force --sign - --timestamp=none "$bundle"
-            codesign --verify --deep --strict "$bundle"
-          done
-          sudo mkdir -p /Library/Audio/Plug-Ins/Components
-          sudo ditto "$au" "/Library/Audio/Plug-Ins/Components/Skeuomorphic Space Panner Alpha.component"
-          killall AudioComponentRegistrar 2>/dev/null || true
-          for attempt in 1 2 3 4 5; do
-            auval -a > au-list.txt
-            if grep -Eq 'aufx[[:space:]]+SpAm[[:space:]]+Gett' au-list.txt; then
-              break
-            fi
-            sleep 2
-          done
-          grep -E 'SpAm|Gett' au-list.txt || true
-          auval -v aufx SpAm Gett
+          & $validator --strictness-level 5 --skip-gui-tests --validate "build-alpha/GettoneSpacePanner_artefacts/Release/VST3/Skeuomorphic Space Panner 2.1.1 Alpha.vst3"
 
       - name: Archive test bundles with permissions
         id: archive
-        if: ${{ !cancelled() && steps.regression.outcome == 'success' }}
+        if: ${{ success() }}
         shell: bash
         run: |
           set -euo pipefail
           stage="$RUNNER_TEMP/panner-alpha"
           mkdir -p "$stage"
           cp LICENSE "$stage/"
-          if [[ "$RUNNER_OS" = Windows ]]; then
-            cp windows/Assets/OFL.txt "$stage/PixelifySans-OFL.txt"
-            cp -R build-alpha/GettoneSpacePanner_artefacts/Release/VST3 "$stage/"
-          else
-            cp macos/Resources/OFL.txt "$stage/PixelifySans-OFL.txt"
-            cp -R build-alpha/SpacePanner_artefacts/Release/{VST3,AU,Standalone} "$stage/"
-          fi
-          tar -czf Skeuomorphic_Space_Panner_2.1.0_Alpha_${{ matrix.platform }}.tar.gz -C "$stage" .
+          cp windows/Assets/OFL.txt "$stage/PixelifySans-OFL.txt"
+          mkdir -p "$stage/VST3"
+          cp -R "build-alpha/GettoneSpacePanner_artefacts/Release/VST3/Skeuomorphic Space Panner 2.1.1 Alpha.vst3" "$stage/VST3/"
+          tar -czf Skeuomorphic_Space_Panner_2.1.1_Alpha_Windows-x64.tar.gz -C "$stage" .
       - uses: actions/upload-artifact@v4
         if: ${{ !cancelled() && steps.archive.outcome == 'success' }}
         with:
-          name: Skeuomorphic-Space-Panner-2.1.0-Alpha-${{ matrix.platform }}
-          path: Skeuomorphic_Space_Panner_2.1.0_Alpha_${{ matrix.platform }}.tar.gz
+          name: Skeuomorphic-Space-Panner-2.1.1-Alpha-Windows-x64
+          path: Skeuomorphic_Space_Panner_2.1.1_Alpha_Windows-x64.tar.gz
           if-no-files-found: error
