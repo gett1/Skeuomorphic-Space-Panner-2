@@ -7,13 +7,15 @@ Skeuomorphic Space Panner è un plug-in audio di Giuseppe “Gettone” Ambrosin
 | Windows x64 | VST3 | [windows](windows/) |
 | macOS Apple Silicon e Intel | AU, VST3, Standalone | [macos](macos/) |
 
-## 2.0 Alpha — DSP Evolution
+## 2.1.0 Alpha — Neural Spatial Engine
 
-Questa build di sviluppo aggiunge il bypass trasparente, la modalità Neutral, un visualizzatore stereo rivisto e il richiamo dei preset 1.1.0 in Legacy. La [documentazione DSP](Documentation/DSP-Evolution.md) descrive implementazione, verifiche e limiti. La 2.0.1 aggiunge il MIX generale. Nome, bundle e identificativi Alpha sono distinti, così la DAW può caricare anche la 1.1.0 nella stessa sessione.
+**Modern** è il motore DSP predefinito. **Neural** aggiunge il modello di stanza fisica e i controlli di assorbimento e diffusione nel pannello ADV. **Global Mix** collega le istanze che condividono un codice di sessione nello stesso processo e suggerisce posizioni modificabili, con conferma manuale e annullamento. I modelli inclusi sono addestrati su dati sintetici.
+
+L'Alpha ha nome e identificativi distinti dalla 1.1.0 e può convivere con quella versione. Il codice Alpha della 2.0.1 è conservato. Vedi [uso, training e benchmark](Documentation/Neural-Spatial-Engine.md) e [regressioni DSP](Documentation/DSP-Evolution.md).
 
 ## Risorse per compilare
 
-I progetti includono immagini e texture neutre per consentire la compilazione dai sorgenti. Il font Pixelify Sans è incluso con la propria licenza SIL Open Font License. Per riprodurre la grafica della release puoi sostituire le risorse neutre con le corrispondenti immagini originali da una copia a cui hai accesso.
+I progetti includono immagini e texture neutre per consentire la compilazione dai sorgenti. Il font Pixelify Sans è incluso con la propria licenza SIL Open Font License. Per usare le risorse originali autorizzate, passa a CMake `-DGETT1_ARTWORK_PATH=/percorso/cartella-immagini`. I pacchetti di prova personalizzati contengono già le grafiche.
 
 ## Windows
 
